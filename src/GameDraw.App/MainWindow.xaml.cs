@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
+using System.Runtime.InteropServices;
+using WinRT.Interop;
 using Windows.Graphics;
 
 // To learn more about WinUI, the WinUI project structure,
@@ -24,6 +26,7 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
+        ApplyCornerPreference(DwmWindowCornerPreference.Round);
         FitToCurrentDisplay();
 
         // Navigate the root frame to the main page on startup.
@@ -65,8 +68,8 @@ public sealed partial class MainWindow : Window
             if (display is not null)
             {
                 var work = display.WorkArea;
-                var width = Math.Min(work.Width, 760);
-                var height = Math.Min(work.Height, 980);
+                var width = Math.Min(work.Width, Math.Clamp((int)Math.Round(work.Width * 0.36d), 520, 660));
+                var height = Math.Min(work.Height, Math.Clamp((int)Math.Round(work.Height * 0.72d), 560, 740));
                 AppWindow.Resize(new SizeInt32(width, height));
                 AppWindow.Move(new PointInt32(work.X + work.Width - width - 24, work.Y + 24));
             }
@@ -79,5 +82,29 @@ public sealed partial class MainWindow : Window
         }
 
         presenter.IsAlwaysOnTop = enabled;
+        ApplyCornerPreference(enabled
+            ? DwmWindowCornerPreference.RoundSmall
+            : DwmWindowCornerPreference.Round);
     }
+
+    private void ApplyCornerPreference(DwmWindowCornerPreference preference)
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            return;
+        }
+
+        var handle = WindowNative.GetWindowHandle(this);
+        var value = (int)preference;
+        _ = DwmSetWindowAttribute(handle, 33, ref value, sizeof(int));
+    }
+
+    private enum DwmWindowCornerPreference
+    {
+        Round = 2,
+        RoundSmall = 3
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(nint window, int attribute, ref int value, int valueSize);
 }

@@ -2,6 +2,8 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System.Runtime.InteropServices;
+using WinRT.Interop;
 using Windows.Graphics;
 
 namespace GameDraw_App;
@@ -84,7 +86,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             Child = content
         };
 
-        AppWindow.Resize(new SizeInt32(520, 220));
+        AppWindow.Resize(new SizeInt32(420, 190));
         AppWindow.IsShownInSwitchers = false;
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -94,6 +96,8 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             presenter.IsMinimizable = false;
             presenter.IsResizable = false;
         }
+
+        ApplyRoundedCorners();
 
         Closed += (_, _) => _disposed = true;
     }
@@ -108,7 +112,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         if (display is not null)
         {
             var work = display.WorkArea;
-            AppWindow.Move(new PointInt32(work.X + work.Width - 544, work.Y + 24));
+            AppWindow.Move(new PointInt32(work.X + work.Width - 444, work.Y + 24));
         }
     }
 
@@ -144,4 +148,19 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         _disposed = true;
         GC.SuppressFinalize(this);
     }
+
+    private void ApplyRoundedCorners()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            return;
+        }
+
+        var handle = WindowNative.GetWindowHandle(this);
+        var preference = 3;
+        _ = DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(nint window, int attribute, ref int value, int valueSize);
 }

@@ -12,7 +12,7 @@ namespace GameDraw.Planning.Modes;
 /// </summary>
 internal static class CleanStrokePlanner
 {
-    private const double SimplificationTolerancePixels = 0.85d;
+    private const double SimplificationTolerancePixels = 1.05d;
 
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
     {
@@ -146,7 +146,7 @@ internal static class CleanStrokePlanner
         var nodes = Enumerable.Range(0, pixels.Length).Where(index => pixels[index]).ToArray();
         var visitedEdges = new HashSet<long>();
         var isolated = new HashSet<int>();
-        foreach (var start in nodes.Where(index => NeighborIndices(index, pixels, width, height).Count != 2))
+        foreach (var start in nodes.Where(index => NeighborIndices(index, pixels, width, height).Count <= 1))
         {
             var neighbors = NeighborIndices(start, pixels, width, height);
             if (neighbors.Count == 0)
@@ -165,6 +165,9 @@ internal static class CleanStrokePlanner
             }
         }
 
+        // Remaining edges are loops and branches. Continuing through a branch
+        // along the straightest unused edge creates long, author-like pen
+        // strokes instead of stopping and restarting at every intersection.
         foreach (var start in nodes)
         {
             if (isolated.Contains(start))
@@ -194,7 +197,7 @@ internal static class CleanStrokePlanner
         var previous = start;
         var current = next;
         var closed = false;
-        while (true)
+        while (points.Count <= pixels.Length + 1)
         {
             visitedEdges.Add(EdgeKey(previous, current));
             if (current == start)
@@ -204,17 +207,26 @@ internal static class CleanStrokePlanner
             }
 
             points.Add(Point(current, width));
-            var neighbors = NeighborIndices(current, pixels, width, height);
-            if (neighbors.Count != 2)
+            var candidates = NeighborIndices(current, pixels, width, height)
+                .Where(candidate => !visitedEdges.Contains(EdgeKey(current, candidate)))
+                .ToArray();
+            if (candidates.Length == 0)
             {
                 break;
             }
 
-            var candidate = neighbors[0] == previous ? neighbors[1] : neighbors[0];
-            if (visitedEdges.Contains(EdgeKey(current, candidate)) && candidate != start)
-            {
-                break;
-            }
+            var previousPoint = Point(previous, width);
+            var currentPoint = Point(current, width);
+            var incomingX = currentPoint.X - previousPoint.X;
+            var incomingY = currentPoint.Y - previousPoint.Y;
+            var candidate = candidates
+                .OrderByDescending(value => ContinuationScore(
+                    incomingX,
+                    incomingY,
+                    currentPoint,
+                    Point(value, width)))
+                .ThenBy(value => value)
+                .First();
 
             previous = current;
             current = candidate;
@@ -242,6 +254,19 @@ internal static class CleanStrokePlanner
                 var neighbor = ((y + offsetY) * width) + x + offsetX;
                 if (pixels[neighbor])
                 {
+                    // If an orthogonal route exists, the diagonal edge is a
+                    // corner-touch shortcut. Keeping it creates tiny triangles
+                    // and occasional straight connector artefacts.
+                    if (offsetX != 0 && offsetY != 0)
+                    {
+                        var horizontal = (y * width) + x + offsetX;
+                        var vertical = ((y + offsetY) * width) + x;
+                        if (pixels[horizontal] || pixels[vertical])
+                        {
+                            continue;
+                        }
+                    }
+
                     neighbors.Add(neighbor);
                 }
             }
@@ -317,6 +342,22 @@ internal static class CleanStrokePlanner
         var x = second.X - first.X;
         var y = second.Y - first.Y;
         return (x * x) + (y * y);
+    }
+
+    private static double ContinuationScore(
+        double incomingX,
+        double incomingY,
+        PixelPoint current,
+        PixelPoint candidate)
+    {
+        var outgoingX = candidate.X - current.X;
+        var outgoingY = candidate.Y - current.Y;
+        var denominator = Math.Sqrt(
+            ((incomingX * incomingX) + (incomingY * incomingY)) *
+            ((outgoingX * outgoingX) + (outgoingY * outgoingY)));
+        return denominator <= double.Epsilon
+            ? -1d
+            : ((incomingX * outgoingX) + (incomingY * outgoingY)) / denominator;
     }
 
     private static PixelPoint Point(int index, int width) => new(index % width, index / width);

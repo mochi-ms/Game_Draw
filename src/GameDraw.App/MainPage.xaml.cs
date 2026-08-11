@@ -173,27 +173,21 @@ public sealed partial class MainPage : Page, IDisposable
 
     private async void ShowHelp_Click(object sender, RoutedEventArgs e)
     {
-        var content = new StackPanel { Spacing = 14, MaxWidth = 560 };
-        content.Children.Add(CreateHelpStep("1. 이미지 선택", "PNG, JPG, WEBP 또는 BMP 파일을 고릅니다."));
-        content.Children.Add(CreateHelpStep("2. 표현 방식", "자동 채색은 원본 색을 줄여 HEX 색상을 바꾸며 칠합니다. 검정 선화는 색을 채우지 않고 경계만 검은 선으로 추출합니다."));
-        content.Children.Add(CreateHelpStep("자동 추천", "이미지의 이동 거리와 횟수를 비교해 빠른 방식을 고릅니다. 검정 선화에서는 털선을 줄이기 위해 클린 펜 스트로크를 우선 사용합니다."));
-        content.Children.Add(CreateHelpStep("클린 펜 스트로크 · 선화 권장", "굵은 픽셀 선을 1픽셀 중심선으로 얇게 만들고, 갈림점과 끝점 사이를 한 번의 연속 획으로 묶습니다. 작은 지그재그도 단순화하므로 작가가 펜 선을 한 번씩 정돈해 긋는 느낌에 가장 가깝습니다. 검정 선화 + 빠르게 조합을 먼저 권장합니다."));
-        content.Children.Add(CreateHelpStep("픽셀 점찍기", "그릴 픽셀마다 클릭합니다. 작은 픽셀아트의 모양은 가장 정확하지만 점 수만큼 클릭하므로 사진이나 큰 선화에는 매우 느립니다."));
-        content.Children.Add(CreateHelpStep("가로 스캔라인", "같은 색이 이어진 가로 구간을 한 줄로 긋습니다. 채색 이미지와 가로로 긴 형태에 빠르지만, 선화에서는 짧은 가로선이 많이 생길 수 있습니다."));
-        content.Children.Add(CreateHelpStep("세로 스캔라인", "같은 색이 이어진 세로 구간을 한 줄로 긋습니다. 세로로 긴 형태나 세로 줄무늬에 유리하며, 선화에서는 짧은 세로선이 많아질 수 있습니다."));
-        content.Children.Add(CreateHelpStep("윤곽선", "각 색 영역의 바깥 테두리를 닫힌 선으로 따라갑니다. 로고·도형·스티커처럼 면 경계가 명확한 그림에 적합합니다. 선화에 쓰면 굵은 선의 양쪽 경계를 그릴 수 있습니다."));
-        content.Children.Add(CreateHelpStep("면 채우기", "각 색 영역 내부를 줄 단위로 채웁니다. 색칠 면이 넓은 일러스트에 적합하지만 선만 필요한 그림에는 사용하지 않는 것이 좋습니다."));
-        content.Children.Add(CreateHelpStep("하이브리드", "윤곽선을 먼저 잡고 내부도 채웁니다. 완성도는 높지만 윤곽선과 채색을 모두 실행하므로 가장 오래 걸릴 수 있습니다."));
-        content.Children.Add(CreateHelpStep("3. Podiums 연결", "비율 프리셋을 고르고 Roblox의 흰 캔버스를 한 번 드래그합니다. 도구 좌표가 없을 때만 안내되는 6개 위치에서 F6을 누릅니다."));
-        content.Children.Add(CreateHelpStep("4. 그리기 시작", "시작 버튼을 누르면 GameDraw가 숨고 Roblox가 자동으로 활성화됩니다. F7은 일시정지, F8은 마우스를 즉시 놓고 중지합니다."));
-        content.Children.Add(CreateHelpStep("작업 초기화", "분석·캘리브레이션·그리기를 중지하고 현재 이미지와 진행률을 지웁니다. 저장된 Podiums 캔버스와 도구 위치는 유지됩니다."));
+        var content = new StackPanel { Spacing = 10, MaxWidth = 620 };
+        content.Children.Add(CreateHelpSection("빠른 시작", "① 이미지 선택  →  ② 검정 선화 + 클린 펜 스트로크  →  ③ 스마트 피사체 켜기  →  ④ 이미지 분석  →  ⑤ 캔버스 연결  →  ⑥ 그리기 시작"));
+        content.Children.Add(CreateHelpSection("미리보기 기준", "분석 뒤 보이는 ‘실행 경로 미리보기’가 실제 마우스가 따라갈 선입니다. 원본 픽셀이 아니라 실행 스트로크를 직접 렌더링하므로 결과를 시작 전에 확인할 수 있습니다."));
+        content.Children.Add(CreateHelpSection("선화 권장 설정", "검정 선화 + 클린 펜 스트로크는 노이즈를 줄이고 선의 중심을 한 번씩 이어 그립니다. Podiums 브러시는 자동으로 최소 굵기를 사용합니다. 점묘나 원치 않는 가로선이 싫다면 픽셀 점찍기와 스캔라인을 선택하지 마세요."));
+        content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴·눈이 있을 가능성이 높은 위쪽 중심 영역의 선을 먼저 그립니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
+        content.Children.Add(CreateHelpSection("그리기 방법 비교", "클린 펜: 깔끔한 선화 권장\n픽셀 점찍기: 작은 픽셀아트 전용, 가장 느림\n가로/세로 스캔라인: 단색 면을 빠르게 긋지만 선화에는 줄무늬 위험\n윤곽선: 로고·도형의 바깥 테두리\n면 채우기: 넓은 색 면\n하이브리드: 윤곽선과 채색을 모두 실행"));
+        content.Children.Add(CreateHelpSection("속도", "안전하게 1×, 빠르게 2×, 매우 빠르게 8×입니다. 매우 빠르게는 클린 펜처럼 연결된 획에서 가장 효과적이며 짧은 점을 수천 번 찍는 픽셀 모드에서는 게임 입력 특성상 권장하지 않습니다."));
+        content.Children.Add(CreateHelpSection("연결과 안전", "캔버스 비율을 고르고 흰 그림판만 드래그해 지정합니다. 실행 시 Roblox가 활성화되며 F7은 일시정지/재개, F8은 즉시 마우스를 놓고 중지합니다. ‘작업 초기화’는 진행 중 작업도 중지합니다."));
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "GameDraw 사용법",
             Content = new ScrollViewer
             {
-                MaxHeight = 640,
+                MaxHeight = Math.Min(620, Math.Max(360, ActualHeight - 180)),
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 Content = content
             },
@@ -233,6 +227,19 @@ public sealed partial class MainPage : Page, IDisposable
             TextWrapping = TextWrapping.Wrap
         });
         return panel;
+    }
+
+    private static Border CreateHelpSection(string title, string description)
+    {
+        var panel = CreateHelpStep(title, description);
+        return new Border
+        {
+            Padding = new Thickness(14, 11, 14, 11),
+            CornerRadius = new CornerRadius(12),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                Microsoft.UI.ColorHelper.FromArgb(18, 112, 155, 255)),
+            Child = panel
+        };
     }
 
     private async void ImportProfile_Click(object sender, RoutedEventArgs e)
@@ -531,9 +538,10 @@ public sealed partial class MainPage : Page, IDisposable
                 SafeWholeNumber(ViewModel.MaximumColors, 128, 2, 256),
                 SelectedRenderStyle(),
                 SelectedSpeedMultiplier(),
+                ViewModel.SmartSubjectEnabled,
                 status,
                 preparationCancellation.Token);
-            ShowProcessedPreview(_preparedDrawing.Image.Quantized.Rendered);
+            ShowProcessedPreview(_preparedDrawing.PlanPreview);
             ViewModel.PlanSummary = _preparedDrawing.Summary;
             ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = $"분석이 완료되었습니다. {_preparedDrawing.Summary}";
@@ -663,6 +671,7 @@ public sealed partial class MainPage : Page, IDisposable
         if (e.PropertyName is nameof(MainPageViewModel.SelectedMode)
             or nameof(MainPageViewModel.SelectedRenderStyle)
             or nameof(MainPageViewModel.SelectedSpeed)
+            or nameof(MainPageViewModel.SmartSubjectEnabled)
             or nameof(MainPageViewModel.MaximumColors)
             or nameof(MainPageViewModel.LogicalWidth)
             or nameof(MainPageViewModel.LogicalHeight))
@@ -966,7 +975,7 @@ public sealed partial class MainPage : Page, IDisposable
         => ViewModel.SelectedSpeed switch
         {
             "안전하게" => 1d,
-            "매우 빠르게" => 4d,
+            "매우 빠르게" => 8d,
             _ => 2d
         };
 
@@ -1007,7 +1016,7 @@ public sealed partial class MainPage : Page, IDisposable
         bitmap.Invalidate();
         PreviewImage.Source = bitmap;
         FloatingPreviewImage.Source = bitmap;
-        PreviewBadgeLabel.Text = "변환 미리보기";
+        PreviewBadgeLabel.Text = "실행 경로 미리보기";
     }
 
     private static byte CompositeOnWhite(byte channel, byte alpha)

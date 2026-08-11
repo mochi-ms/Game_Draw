@@ -6,6 +6,7 @@ using GameDraw.Automation.Windows.Targeting;
 using GameDraw.Core.Colors;
 using GameDraw.Core.Execution;
 using GameDraw.Core.Geometry;
+using GameDraw.Core.Imaging;
 using GameDraw.Core.Models;
 using GameDraw.Core.Targeting;
 using GameDraw.Core.Vision;
@@ -26,15 +27,21 @@ public sealed record PreparedDrawing(
     string SourcePath,
     ImageProcessingResult Image,
     DrawingPlanningResult Planning,
+    ImageFrame PlanPreview,
+    SubjectFocusResult SubjectFocus,
     int RequestedColors,
     DrawingRenderStyle RenderStyle,
-    double SpeedMultiplier)
+    double SpeedMultiplier,
+    bool SmartSubjectEnabled,
+    bool FacePriorityApplied)
 {
     public string Summary =>
         $"{(RenderStyle == DrawingRenderStyle.LineArt ? "검정 선화" : "자동 채색")} · " +
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
-        $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}";
+        $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}" +
+        (SubjectFocus.BackgroundRemoved ? " · 배경 제거" : string.Empty) +
+        (FacePriorityApplied ? " · 얼굴 특징 우선" : string.Empty);
 
     private static string FormatDuration(TimeSpan duration)
         => duration.TotalHours >= 1
@@ -215,6 +222,7 @@ public sealed class DrawingSessionController : IDisposable
         int maximumColors,
         DrawingRenderStyle renderStyle,
         double speedMultiplier,
+        bool smartSubjectEnabled,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -234,7 +242,7 @@ public sealed class DrawingSessionController : IDisposable
             throw new ArgumentOutOfRangeException(nameof(renderStyle));
         }
 
-        if (!double.IsFinite(speedMultiplier) || speedMultiplier is < 0.5d or > 6d)
+        if (!double.IsFinite(speedMultiplier) || speedMultiplier is < 0.5d or > 10d)
         {
             throw new ArgumentOutOfRangeException(nameof(speedMultiplier));
         }
@@ -242,8 +250,19 @@ public sealed class DrawingSessionController : IDisposable
         status?.Report("원본 이미지를 디코딩하는 중입니다…");
         var decoded = await _decoder.DecodeFileAsync(sourcePath, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+        var subjectFocus = smartSubjectEnabled
+            ? await Task.Run(() => SubjectFocusProcessor.Process(decoded.Frame), cancellationToken).ConfigureAwait(false)
+            : SubjectFocusResult.Unchanged(decoded.Frame);
+        if (subjectFocus.BackgroundRemoved)
+        {
+            status?.Report(subjectFocus.PersonLikely
+                ? "피사체 배경을 정리하고 얼굴 특징의 우선순위를 분석했습니다…"
+                : "피사체를 중심으로 배경을 정리하고 크롭했습니다…");
+        }
+
+        var processingSource = subjectFocus.Frame;
         var target = FitWithin(
-            new PixelSize(decoded.Frame.Width, decoded.Frame.Height),
+            new PixelSize(processingSource.Width, processingSource.Height),
             CurrentProfile.Canvas.IsCalibrated
                 ? new PixelSize(CurrentProfile.Canvas.LogicalWidth, CurrentProfile.Canvas.LogicalHeight)
                 : new PixelSize(512, 512));
@@ -254,7 +273,7 @@ public sealed class DrawingSessionController : IDisposable
         {
             image = await Task.Run(() =>
             {
-                var resized = ImageResampler.Resize(decoded.Frame, target);
+                var resized = ImageResampler.Resize(processingSource, target);
                 var lineArt = LineArtProcessor.Extract(resized);
                 var palette = new ColorPalette(new[] { RgbColor.Black }, "line-art");
                 var quantized = _quantizer.Quantize(lineArt, palette, new QuantizationOptions
@@ -278,13 +297,13 @@ public sealed class DrawingSessionController : IDisposable
                 },
                 Quantization = new QuantizationOptions
                 {
-                    DitherMode = DitherMode.OrderedBayer4,
+                    DitherMode = DitherMode.None,
                     PreserveAlpha = true
                 }
             };
             image = await Task.Run(
                 () => _imaging.ProcessFrame(
-                    decoded.Frame,
+                    processingSource,
                     processingOptions,
                     sourcePath,
                     decoded.FormatName,
@@ -300,13 +319,38 @@ public sealed class DrawingSessionController : IDisposable
                 ? DrawingMode.CleanStroke
                 : mode,
             MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond * speedMultiplier,
-            InterStrokeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
+            InterStrokeDelayMilliseconds = speedMultiplier >= 8d
+                ? 0
+                : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
             ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier)
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
             cancellationToken).ConfigureAwait(false);
-        return new PreparedDrawing(sourcePath, image, planning, maximumColors, renderStyle, speedMultiplier);
+        var facePriorityApplied = false;
+        if (subjectFocus.FacePriorityRegion is { } faceRegion)
+        {
+            var prioritized = DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, faceRegion);
+            planning = planning with
+            {
+                Plan = prioritized,
+                Estimate = _planner.Estimate(prioritized, plannerOptions)
+            };
+            facePriorityApplied = true;
+        }
+
+        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan);
+        return new PreparedDrawing(
+            sourcePath,
+            image,
+            planning,
+            preview,
+            subjectFocus,
+            maximumColors,
+            renderStyle,
+            speedMultiplier,
+            smartSubjectEnabled,
+            facePriorityApplied);
     }
 
     public async Task<DrawingExecutionResult> ExecuteAsync(
@@ -345,10 +389,17 @@ public sealed class DrawingSessionController : IDisposable
         var executionCanvas = await VerifyVisualPreflightAsync(target, status, cancellationToken).ConfigureAwait(false);
 
         var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
-        var input = new WindowsInputController(new WindowsInputOptions { MaxEventsPerSecond = 1_000d });
+        var input = new WindowsInputController(new WindowsInputOptions
+        {
+            MaxEventsPerSecond = prepared.SpeedMultiplier >= 8d ? 2_000d : 1_000d
+        });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
-        var hooks = new PodiumsExecutionHooks(CurrentProfile, context);
+        var preferredBrushSize = prepared.RenderStyle == DrawingRenderStyle.LineArt ||
+            prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
+            ? PodiumsProfileSettings.ReadControlLayout(CurrentProfile).MinimumBrushSizePixels
+            : (int?)null;
+        var hooks = new PodiumsExecutionHooks(CurrentProfile, context, preferredBrushSize);
         lock (_executionLock)
         {
             _activeInput = input;
@@ -363,7 +414,9 @@ public sealed class DrawingSessionController : IDisposable
                 {
                     MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
                     SpeedMultiplier = prepared.SpeedMultiplier,
-                    InterStrokeDelayMilliseconds = CurrentProfile.Timing.InterStrokeDelayMilliseconds,
+                    InterStrokeDelayMilliseconds = prepared.SpeedMultiplier >= 8d
+                        ? 0
+                        : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
                     Hooks = hooks,
                     RequireForegroundTarget = true

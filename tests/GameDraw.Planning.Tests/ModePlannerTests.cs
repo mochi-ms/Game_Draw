@@ -212,6 +212,52 @@ public sealed class ModePlannerTests
         Assert.True(result.Estimate.EstimatedDuration > TimeSpan.Zero);
     }
 
+    [Fact]
+    public void PlanPreviewRendersTheExactStrokePathOnWhite()
+    {
+        var stroke = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0, 0),
+            new GameDraw.Core.Geometry.NormalizedPoint(1, 1)
+        });
+        var plan = new DrawingPlan(
+            DrawingMode.CleanStroke,
+            new GameDraw.Core.Geometry.PixelSize(5, 5),
+            new[] { new DrawingColorGroup(RgbColor.Black, new[] { stroke }) });
+
+        var preview = DrawingPlanPostProcessor.RenderPreview(plan);
+
+        Assert.Equal(RgbColor.Black, preview[0, 0].Color);
+        Assert.Equal(RgbColor.Black, preview[2, 2].Color);
+        Assert.Equal(RgbColor.Black, preview[4, 4].Color);
+        Assert.Equal(RgbColor.White, preview[4, 0].Color);
+    }
+
+    [Fact]
+    public void FacePriorityMovesIntersectingStrokesBeforeOuterForm()
+    {
+        var outer = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.05, 0.8),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.95, 0.8)
+        });
+        var eye = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.4, 0.25),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.6, 0.25)
+        });
+        var plan = new DrawingPlan(
+            DrawingMode.CleanStroke,
+            new GameDraw.Core.Geometry.PixelSize(100, 100),
+            new[] { new DrawingColorGroup(RgbColor.Black, new[] { outer, eye }) });
+
+        var result = DrawingPlanPostProcessor.PrioritizeRegion(
+            plan,
+            new GameDraw.Core.Geometry.NormalizedRect(0.25, 0.1, 0.5, 0.4));
+
+        Assert.Same(eye, result.ColorGroups[0].Strokes[0]);
+    }
+
     private static QuantizedImage Quantize(IReadOnlyList<RgbColor> colors, int width, int height)
     {
         var frame = new ImageFrame(

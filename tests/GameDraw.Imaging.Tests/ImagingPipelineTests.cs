@@ -207,4 +207,45 @@ public sealed class ImagingPipelineTests
 
         Assert.All(result.Pixels, pixel => Assert.True(pixel.IsTransparent));
     }
+
+    [Fact]
+    public void SmartSubjectRemovesBorderBackgroundAndCropsPortrait()
+    {
+        const int width = 20;
+        const int height = 20;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        for (var y = 4; y < 16; y++)
+        {
+            for (var x = 7; x < 13; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.True(result.Cropped);
+        Assert.True(result.PersonLikely);
+        Assert.NotNull(result.FacePriorityRegion);
+        Assert.True(result.Frame.Width < width);
+        Assert.True(result.Frame.Height < height);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.Alpha == 0);
+    }
+
+    [Fact]
+    public void SmartSubjectKeepsUniformFrameWhenNoSubjectExists()
+    {
+        var frame = new CoreImageFrame(
+            12,
+            12,
+            Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), 144).ToArray());
+
+        var result = SubjectFocusProcessor.Process(frame);
+
+        Assert.False(result.BackgroundRemoved);
+        Assert.False(result.Cropped);
+        Assert.Equal(frame.Width, result.Frame.Width);
+        Assert.Equal(frame.Height, result.Frame.Height);
+    }
 }

@@ -26,10 +26,10 @@ public partial class MainPageViewModel : ObservableObject
     public partial string? SelectedImagePath { get; set; }
 
     [ObservableProperty]
-    public partial string SelectedMode { get; set; } = "가로 스캔라인";
+    public partial string SelectedMode { get; set; } = "클린 펜 스트로크";
 
     [ObservableProperty]
-    public partial string SelectedRenderStyle { get; set; } = "자동 채색";
+    public partial string SelectedRenderStyle { get; set; } = "검정 선화";
 
     [ObservableProperty]
     public partial string SelectedSpeed { get; set; } = "빠르게";
@@ -66,6 +66,9 @@ public partial class MainPageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsFloating { get; set; }
+
+    [ObservableProperty]
+    public partial bool SmartSubjectEnabled { get; set; } = true;
 
     [ObservableProperty]
     public partial bool IsProfileCalibrated { get; set; }
@@ -127,7 +130,7 @@ public partial class MainPageViewModel : ObservableObject
     public string SpeedDescription => SelectedSpeed switch
     {
         "안전하게" => "1× · 입력 안정성을 우선합니다.",
-        "매우 빠르게" => "4× · 단순한 그림에서 사용하세요.",
+        "매우 빠르게" => "8× · 연결 선을 묶고 불필요한 획 지연을 제거합니다.",
         _ => "2× · 속도와 입력 안정성의 권장 균형입니다."
     };
 
@@ -308,9 +311,10 @@ public partial class MainPageViewModel : ObservableObject
     {
         SelectedImagePath = null;
         SelectedImageName = "이미지가 선택되지 않았습니다.";
-        SelectedMode = "가로 스캔라인";
-        SelectedRenderStyle = "자동 채색";
+        SelectedMode = "클린 펜 스트로크";
+        SelectedRenderStyle = "검정 선화";
         SelectedSpeed = "빠르게";
+        SmartSubjectEnabled = true;
         MaximumColors = 128d;
         Progress = 0d;
         PlanSummary = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";

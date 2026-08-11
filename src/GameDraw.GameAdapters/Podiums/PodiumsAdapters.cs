@@ -388,11 +388,16 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
     private readonly IGameAdapterExecutionContext _context;
     private readonly PodiumsColorAdapter _colors = new();
     private readonly PodiumsToolAdapter _tools = new();
+    private readonly int? _preferredBrushSizePixels;
 
-    public PodiumsExecutionHooks(GameProfile profile, IGameAdapterExecutionContext context)
+    public PodiumsExecutionHooks(
+        GameProfile profile,
+        IGameAdapterExecutionContext context,
+        int? preferredBrushSizePixels = null)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _preferredBrushSizePixels = preferredBrushSizePixels;
     }
 
     public async ValueTask BeforePlanAsync(
@@ -411,7 +416,10 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         if (layout.HasBrushSizeControl)
         {
             var sizeResult = await _tools.SelectBrushSizeAsync(
-                layout.DefaultBrushSizePixels,
+                Math.Clamp(
+                    _preferredBrushSizePixels ?? layout.DefaultBrushSizePixels,
+                    layout.MinimumBrushSizePixels,
+                    layout.MaximumBrushSizePixels),
                 _profile,
                 _context,
                 cancellationToken).ConfigureAwait(false);

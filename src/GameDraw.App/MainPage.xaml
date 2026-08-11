@@ -491,6 +491,12 @@
                                     SpinButtonPlacementMode="Compact"
                                     Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
                             </Grid>
+                            <ToggleSwitch
+                                Header="스마트 피사체"
+                                OffContent="원본 유지"
+                                OnContent="배경 제거 · 인물 우선"
+                                IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}"
+                                ToolTipService.ToolTip="로컬 분석으로 배경을 지우고 인물 구도에서는 얼굴 특징부터 그립니다." />
                             <StackPanel x:Name="AnalysisDescriptionPanel" Spacing="2">
                                 <TextBlock
                                     Text="{x:Bind ViewModel.RenderStyleDescription, Mode=OneWay}"
@@ -648,7 +654,14 @@
                                 </ComboBox>
                                 <NumberBox Grid.Column="1" Header="최대 색상" Minimum="2" Maximum="256" SmallChange="8" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
                             </Grid>
-                            <TextBlock Grid.Row="4" Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <StackPanel Grid.Row="4" Spacing="4">
+                                <ToggleSwitch
+                                    Header="스마트 피사체"
+                                    OffContent="끔"
+                                    OnContent="배경 제거 · 인물 우선"
+                                    IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}" />
+                                <TextBlock Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Style="{ThemeResource MutedTextBlockStyle}" />
+                            </StackPanel>
                             <Button Grid.Row="5" Click="PrepareDrawing_Click" Content="이미지 분석" IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,9" />
                         </Grid>
                     </Border>

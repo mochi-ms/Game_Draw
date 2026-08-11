@@ -395,6 +395,15 @@ public sealed class WindowsDrawingExecutor :
         DrawingExecutionOptions options,
         CancellationToken cancellationToken)
     {
+        // Ultra-fast mode still emits every planned mouse point; the input
+        // controller's event-rate limiter provides the pacing. Avoiding one
+        // Task.Delay per point removes the dominant scheduler overhead while
+        // preserving the exact path shown in the preview.
+        if (options.SpeedMultiplier >= 8d)
+        {
+            return;
+        }
+
         var x = (second.X - first.X) * logicalSize.Width;
         var y = (second.Y - first.Y) * logicalSize.Height;
         var logicalPixels = Math.Sqrt((x * x) + (y * y));
