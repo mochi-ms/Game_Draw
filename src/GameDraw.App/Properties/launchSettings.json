@@ -1,10 +1,10 @@
 {
   "profiles": {
-    "GameDraw.App (Package)": {
-      "commandName": "MsixPackage"
-    },
     "GameDraw.App (Unpackaged)": {
       "commandName": "Project"
+    },
+    "GameDraw.App (Package)": {
+      "commandName": "MsixPackage"
     }
   }
 }

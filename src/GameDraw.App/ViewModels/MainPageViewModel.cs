@@ -35,6 +35,9 @@ public partial class MainPageViewModel : ObservableObject
     public partial string SelectedSpeed { get; set; } = "빠르게";
 
     [ObservableProperty]
+    public partial string SelectedCanvasAspect { get; set; } = "1:1 정사각형";
+
+    [ObservableProperty]
     public partial string ProfileName { get; set; } = "새 게임 프로필";
 
     [ObservableProperty]
@@ -97,7 +100,7 @@ public partial class MainPageViewModel : ObservableObject
         Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
 
     public bool CanStart => HasImage && IsProfileCalibrated && !IsBusy && !IsCalibrating &&
-        Stage is WorkspaceStage.Ready or WorkspaceStage.Completed;
+        Stage is WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed;
 
     public bool CanPause => Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
 

@@ -25,52 +25,60 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         {
             Text = "Roblox로 전환하세요.",
             TextWrapping = TextWrapping.Wrap,
-            FontSize = 14
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxLines = 2,
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 226, 232, 240))
         };
         _percentage = new TextBlock
         {
             Text = "0%",
             HorizontalAlignment = HorizontalAlignment.Right,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 142, 167, 255))
         };
-        _progress = new ProgressBar { Minimum = 0, Maximum = 1, Value = 0 };
+        _progress = new ProgressBar { Minimum = 0, Maximum = 1, Value = 0, Height = 4 };
 
         var header = new Grid { ColumnSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(new TextBlock
         {
-            Text = "자동 그리기",
-            FontSize = 20,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            Text = "GameDraw 실행 중",
+            FontSize = 17,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Microsoft.UI.Colors.White)
         });
         Grid.SetColumn(_percentage, 1);
         header.Children.Add(_percentage);
 
-        var content = new StackPanel { Spacing = 12 };
+        var content = new StackPanel { Spacing = 8 };
         content.Children.Add(header);
         content.Children.Add(_status);
         content.Children.Add(_progress);
         content.Children.Add(new TextBlock
         {
             Text = "F7  일시 정지/재개     F8  즉시 중지",
-            FontSize = 13,
-            Opacity = 0.72,
-            TextWrapping = TextWrapping.Wrap
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(210, 203, 213, 225)),
+            TextWrapping = TextWrapping.NoWrap
         });
         Content = new Border
         {
-            Padding = new Thickness(20),
-            CornerRadius = new CornerRadius(20),
-            RequestedTheme = ElementTheme.Light,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.White),
+            Padding = new Thickness(18, 14, 18, 12),
+            CornerRadius = new CornerRadius(14),
+            RequestedTheme = ElementTheme.Dark,
+            Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 22, 29, 43)),
+            BorderBrush = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 67, 78, 99)),
+            BorderThickness = new Thickness(1),
             Child = content
         };
 
-        AppWindow.Resize(new SizeInt32(390, 220));
+        AppWindow.Resize(new SizeInt32(520, 180));
         AppWindow.IsShownInSwitchers = false;
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
+            presenter.SetBorderAndTitleBar(false, false);
             presenter.IsAlwaysOnTop = true;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
@@ -90,7 +98,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         if (display is not null)
         {
             var work = display.WorkArea;
-            AppWindow.Move(new PointInt32(work.X + work.Width - 414, work.Y + 24));
+            AppWindow.Move(new PointInt32(work.X + work.Width - 544, work.Y + 24));
         }
     }
 

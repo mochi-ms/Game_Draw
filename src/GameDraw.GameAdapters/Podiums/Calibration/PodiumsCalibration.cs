@@ -35,6 +35,12 @@ public sealed record PodiumsCalibrationOptions
 
     public bool IncludeColorControls { get; init; } = true;
 
+    /// <summary>
+    /// A canvas rectangle selected by the drag overlay. When supplied, the
+    /// corner-point steps are skipped and calibration starts with the tools.
+    /// </summary>
+    public NormalizedRect? InitialCanvasBounds { get; init; }
+
     public void Validate()
     {
         if (LogicalWidth <= 0)
@@ -45,6 +51,12 @@ public sealed record PodiumsCalibrationOptions
         if (LogicalHeight <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(LogicalHeight));
+        }
+
+        if (InitialCanvasBounds is { } bounds &&
+            (!bounds.IsWithinUnitSquare || bounds.Width <= 0d || bounds.Height <= 0d))
+        {
+            throw new ArgumentOutOfRangeException(nameof(InitialCanvasBounds));
         }
     }
 }
@@ -77,12 +89,22 @@ public sealed class PodiumsCalibrationSession
     {
         _options = options ?? new PodiumsCalibrationOptions();
         _options.Validate();
-        State = new(
-            PodiumsCalibrationStep.CaptureCanvasTopLeft,
-            null,
-            null,
-            _controls,
-            "Capture the top-left corner of the Podiums canvas.");
+        var selected = _options.InitialCanvasBounds;
+        State = selected is { } bounds
+            ? new PodiumsCalibrationState(
+                _options.RequireControls ? PodiumsCalibrationStep.CapturePencilTool : PodiumsCalibrationStep.Completed,
+                new NormalizedPoint(bounds.X, bounds.Y),
+                new NormalizedPoint(bounds.X + bounds.Width, bounds.Y + bounds.Height),
+                _controls,
+                _options.RequireControls
+                    ? "Capture the Podiums pencil tool."
+                    : "Podiums calibration is complete.")
+            : new PodiumsCalibrationState(
+                PodiumsCalibrationStep.CaptureCanvasTopLeft,
+                null,
+                null,
+                _controls,
+                "Capture the top-left corner of the Podiums canvas.");
     }
 
     public PodiumsCalibrationState State { get; private set; }

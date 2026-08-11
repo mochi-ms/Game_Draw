@@ -57,11 +57,13 @@
                     Spacing="8"
                     VerticalAlignment="Center">
                     <Button
+                        x:Name="HelpButton"
                         Click="ShowHelp_Click"
                         Content="사용법"
                         Padding="14,8"
                         AutomationProperties.Name="사용법 보기" />
                     <Button
+                        x:Name="FloatingButton"
                         Click="ToggleFloating_Click"
                         Content="{x:Bind ViewModel.FloatingLabel, Mode=OneWay}"
                         Padding="14,8"
@@ -157,6 +159,7 @@
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource StrongTextBrush}"
                         TextTrimming="CharacterEllipsis"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                         VerticalAlignment="Center" />
                     <Border
                         Grid.Column="2"
@@ -363,6 +366,10 @@
                     <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <StackPanel Spacing="1">
                                     <TextBlock Text="3  Podiums 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                     <TextBlock
@@ -371,15 +378,38 @@
                                         FontWeight="SemiBold" />
                                 </StackPanel>
                                 <Button
+                                    Grid.Column="1"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
+                                    Click="FullProfileSetup_Click"
+                                    Content="도구 재설정"
+                                    Padding="14,8" />
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox
+                                    Header="캔버스 비율"
+                                    SelectedItem="{x:Bind ViewModel.SelectedCanvasAspect, Mode=TwoWay}"
+                                    HorizontalAlignment="Stretch">
+                                    <x:String>자유 비율</x:String>
+                                    <x:String>1:1 정사각형</x:String>
+                                    <x:String>4:3 가로형</x:String>
+                                    <x:String>16:9 가로형</x:String>
+                                    <x:String>원본 이미지 비율</x:String>
+                                </ComboBox>
+                                <Button
+                                    Grid.Column="1"
+                                    VerticalAlignment="Bottom"
                                     Click="ProfileSetup_Click"
-                                    Content="연결 설정"
+                                    Content="영역 드래그"
                                     Padding="14,8" />
                             </Grid>
                             <TextBlock
                                 x:Name="CalibrationHint"
-                                Text="처음 한 번만: Roblox에서 안내 위치에 마우스를 놓고 F6을 누릅니다."
+                                Text="흰 캔버스는 박스로 한 번 드래그합니다. 도구 재설정은 연필·색상 위치가 바뀐 경우에만 사용하세요."
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border
@@ -555,35 +585,5 @@
             </Border>
         </Grid>
 
-        <Border
-            x:Name="ExecutionOverlay"
-            Canvas.ZIndex="10"
-            Margin="18"
-            Padding="16"
-            HorizontalAlignment="Right"
-            VerticalAlignment="Bottom"
-            MaxWidth="360"
-            Background="{ThemeResource CardBackgroundBrush}"
-            BorderBrush="{ThemeResource PrimaryBrush}"
-            BorderThickness="1"
-            CornerRadius="16"
-            Visibility="{x:Bind ViewModel.IsExecutionPanelVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-            <StackPanel Spacing="10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="실행 중 · F7 일시정지 · F8 중지" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}" Foreground="{ThemeResource PrimaryBrush}" />
-                </Grid>
-                <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
-                <ProgressBar Maximum="1" Value="{x:Bind ViewModel.Progress, Mode=OneWay}" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Click="PauseResume_Click" Content="일시 정지 / 재개" IsEnabled="{x:Bind ViewModel.CanPause, Mode=OneWay}" />
-                    <Button Click="StopDrawing_Click" Content="즉시 중지" IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
     </Grid>
 </Page>

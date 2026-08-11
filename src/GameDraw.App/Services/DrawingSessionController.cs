@@ -1,3 +1,4 @@
+using GameDraw.Automation.Windows;
 using GameDraw.Automation.Windows.Capture;
 using GameDraw.Automation.Windows.Execution;
 using GameDraw.Automation.Windows.Input;
@@ -187,6 +188,27 @@ public sealed class DrawingSessionController : IDisposable
         return normalized.IsWithinUnitSquare ? normalized : null;
     }
 
+    public ValueTask<TargetWindowGeometry?> GetTargetGeometryAsync(
+        TargetWindowSnapshot target,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(target);
+        return _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken);
+    }
+
+    public async Task<bool> ActivateTargetAsync(
+        TargetWindowSnapshot target,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(target);
+        _ = WindowsWindowActivator.TryRestoreAndActivate(target.Handle);
+        await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+        var refreshed = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false);
+        return refreshed?.Snapshot.IsForeground == true;
+    }
+
     public async Task<PreparedDrawing> PrepareAsync(
         string sourcePath,
         DrawingMode mode,
@@ -308,7 +330,7 @@ public sealed class DrawingSessionController : IDisposable
             }
         }
 
-        status?.Report("15초 안에 Roblox Podiums 창으로 전환하세요. F8은 언제든 즉시 중지합니다.");
+        status?.Report("Roblox Podiums 창을 자동으로 활성화합니다. F8은 언제든 즉시 중지합니다.");
         var target = await WaitForForegroundTargetAsync(TimeSpan.FromSeconds(15), cancellationToken)
             .ConfigureAwait(false);
         var geometry = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false)
@@ -320,7 +342,7 @@ public sealed class DrawingSessionController : IDisposable
         }
 
         status?.Report("Podiums 캔버스가 현재 위치에 있는지 확인하는 중입니다…");
-        var executionCanvas = await VerifyVisualPreflightAsync(target, cancellationToken).ConfigureAwait(false);
+        var executionCanvas = await VerifyVisualPreflightAsync(target, status, cancellationToken).ConfigureAwait(false);
 
         var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
         var input = new WindowsInputController(new WindowsInputOptions { MaxEventsPerSecond = 1_000d });
@@ -428,6 +450,11 @@ public sealed class DrawingSessionController : IDisposable
                 return target;
             }
 
+            if (target is not null)
+            {
+                _ = WindowsWindowActivator.TryRestoreAndActivate(target.Handle);
+            }
+
             await Task.Delay(200, cancellationToken).ConfigureAwait(false);
         }
         while (DateTimeOffset.UtcNow < deadline);
@@ -437,6 +464,7 @@ public sealed class DrawingSessionController : IDisposable
 
     private async Task<NormalizedRect> VerifyVisualPreflightAsync(
         TargetWindowSnapshot target,
+        IProgress<string>? status,
         CancellationToken cancellationToken)
     {
         if (!CurrentProfile.VisualVerification.Enabled)
@@ -444,13 +472,18 @@ public sealed class DrawingSessionController : IDisposable
             return CurrentProfile.Canvas.Bounds;
         }
 
-        var captured = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false)
-            ?? throw new InvalidOperationException("Roblox 화면을 캡처하지 못해 안전 검사를 완료할 수 없습니다.");
+        var captured = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false);
+        if (captured is null)
+        {
+            status?.Report("화면 자동 감지를 사용할 수 없어 드래그로 저장한 캔버스 영역을 사용합니다.");
+            return CurrentProfile.Canvas.Bounds;
+        }
+
         var detection = _adapter.VisualDetector.Detect(captured.ToImageFrame());
         if (!detection.IsSafeToContinue)
         {
-            throw new InvalidOperationException(
-                detection.Canvas.Reason ?? "현재 화면에서 Podiums 캔버스를 찾지 못했습니다.");
+            status?.Report("흰 캔버스를 자동으로 찾지 못해 드래그로 저장한 영역을 사용합니다.");
+            return CurrentProfile.Canvas.Bounds;
         }
 
         var saved = CurrentProfile.Canvas.Bounds;
@@ -467,10 +500,10 @@ public sealed class DrawingSessionController : IDisposable
             maximumScaleDelta: allowedScale);
         if (!registration.IsCompatible)
         {
-            throw new InvalidOperationException(
-                $"현재 캔버스가 저장된 보정 위치와 크게 다릅니다. " +
-                $"겹침 {registration.IntersectionOverUnion:P0}, " +
-                $"중심 차이 {registration.CenterShiftPixels:0}px입니다. 연결 설정을 다시 진행하세요.");
+            status?.Report(
+                $"자동 감지 결과가 드래그 영역과 달라 저장한 영역을 우선 사용합니다. " +
+                $"겹침 {registration.IntersectionOverUnion:P0}, 중심 차이 {registration.CenterShiftPixels:0}px입니다.");
+            return saved;
         }
 
         return detected;

@@ -3,10 +3,13 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using GameDraw.Automation.Windows;
 using GameDraw.Automation.Windows.Hotkeys;
 using GameDraw.Core.Execution;
+using GameDraw.Core.Geometry;
 using GameDraw.Core.Models;
 using GameDraw.Core.Presentation;
 using GameDraw.Core.Targeting;
+using GameDraw.GameAdapters.Podiums;
 using GameDraw.GameAdapters.Podiums.Calibration;
+using GameDraw.Profiles;
 using GameDraw_App.Services;
 using GameDraw_App.ViewModels;
 using Microsoft.UI.Xaml;
@@ -168,8 +171,8 @@ public sealed partial class MainPage : Page, IDisposable
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(CreateHelpStep("1. 이미지 선택", "PNG, JPG, WEBP 또는 BMP 파일을 고릅니다."));
         content.Children.Add(CreateHelpStep("2. 이미지 분석", "자동 채색은 원본 색을 줄여 순서대로 칠하고, 검정 선화는 외곽선만 추출합니다. 가로 스캔라인과 ‘빠르게’가 일반적인 권장값입니다."));
-        content.Children.Add(CreateHelpStep("3. Podiums 연결", "처음 한 번만 Roblox 화면에서 안내되는 8개 위치를 차례로 가리키고 F6을 누릅니다."));
-        content.Children.Add(CreateHelpStep("4. 그리기 시작", "필요하면 ‘게임 위에 띄우기’를 켠 뒤 시작 버튼을 누르고 15초 안에 Roblox로 전환합니다. F7은 일시정지, F8은 즉시 중지입니다."));
+        content.Children.Add(CreateHelpStep("3. Podiums 연결", "비율 프리셋을 고르고 Roblox의 흰 캔버스를 한 번 드래그합니다. 도구 좌표가 없을 때만 안내되는 6개 위치에서 F6을 누릅니다."));
+        content.Children.Add(CreateHelpStep("4. 그리기 시작", "시작 버튼을 누르면 GameDraw가 숨고 Roblox가 자동으로 활성화됩니다. F7은 일시정지, F8은 마우스를 즉시 놓고 중지합니다."));
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -192,6 +195,7 @@ public sealed partial class MainPage : Page, IDisposable
         ViewModel.StatusMessage = ViewModel.IsFloating
             ? "GameDraw를 게임 화면 위에 고정했습니다. 그리기 중에는 앱을 클릭하지 말고 F7/F8을 사용하세요."
             : "플로팅을 해제하고 원래 창 크기로 돌아왔습니다.";
+        UpdateHeaderActions(ActualWidth);
     }
 
     private static StackPanel CreateHelpStep(string title, string description)
@@ -335,6 +339,12 @@ public sealed partial class MainPage : Page, IDisposable
     }
 
     private async void ProfileSetup_Click(object sender, RoutedEventArgs e)
+        => await BeginProfileSetupAsync(forceControlSetup: false);
+
+    private async void FullProfileSetup_Click(object sender, RoutedEventArgs e)
+        => await BeginProfileSetupAsync(forceControlSetup: true);
+
+    private async Task BeginProfileSetupAsync(bool forceControlSetup)
     {
         if (_hotkeys is null || ViewModel.IsBusy || ViewModel.IsCalibrating || App.DrawingSession.IsRunning)
         {
@@ -352,17 +362,61 @@ public sealed partial class MainPage : Page, IDisposable
                 return;
             }
 
+            _ = await App.DrawingSession.ActivateTargetAsync(target);
+            var geometry = await App.DrawingSession.GetTargetGeometryAsync(target)
+                ?? throw new InvalidOperationException("Roblox 창의 실제 화면 영역을 읽지 못했습니다.");
+            ViewModel.EndLoading();
+            var (presetLabel, aspectRatio) = SelectedCanvasAspect();
+            App.Window.AppWindow.Hide();
+            NormalizedRect? selectedCanvas;
+            var selector = new CanvasSelectionWindow(presetLabel, aspectRatio);
+            try
+            {
+                selectedCanvas = await selector.SelectAsync(geometry);
+            }
+            finally
+            {
+                App.Window.Activate();
+                selector.CloseAfterSelection();
+            }
+
+            if (selectedCanvas is null)
+            {
+                ViewModel.Stage = _preparedDrawing is null ? WorkspaceStage.Configure : WorkspaceStage.Ready;
+                ViewModel.StatusMessage = "캔버스 영역 선택을 취소했습니다.";
+                return;
+            }
+
+            var canvas = new CanvasProfile
+            {
+                IsCalibrated = true,
+                Bounds = selectedCanvas.Value,
+                LogicalWidth = SafeWholeNumber(ViewModel.LogicalWidth, 512, 1, 4096),
+                LogicalHeight = SafeWholeNumber(ViewModel.LogicalHeight, 512, 1, 4096)
+            };
+            var existingControls = PodiumsProfileSettings.ReadControlLayout(App.DrawingSession.CurrentProfile);
+            if (!forceControlSetup && existingControls.IsConfigured)
+            {
+                var result = PodiumsCalibrationSession.CreateManual(canvas, existingControls);
+                var profile = await App.DrawingSession.SaveCalibrationAsync(result, ViewModel.ProfileName);
+                ViewModel.SetProfileState(profile.Name, true);
+                ViewModel.Stage = _preparedDrawing is null ? WorkspaceStage.Configure : WorkspaceStage.Ready;
+                ViewModel.StatusMessage = "드래그한 캔버스 영역을 저장했습니다. 이미 분석했다면 바로 그리기를 시작할 수 있습니다.";
+                return;
+            }
+
             _calibrationTarget = target;
             _calibration = new PodiumsCalibrationSession(new PodiumsCalibrationOptions
             {
-                LogicalWidth = SafeWholeNumber(ViewModel.LogicalWidth, 512, 1, 4096),
-                LogicalHeight = SafeWholeNumber(ViewModel.LogicalHeight, 512, 1, 4096)
+                LogicalWidth = canvas.LogicalWidth,
+                LogicalHeight = canvas.LogicalHeight,
+                InitialCanvasBounds = canvas.Bounds
             });
             _hotkeys.Register(InputKey.F6);
             ViewModel.IsCalibrating = true;
             ViewModel.Stage = WorkspaceStage.Configure;
             UpdateCalibrationMessage();
-            ViewModel.StatusMessage = "Roblox로 전환해 안내된 위치에 마우스를 놓고 F6을 누르세요.";
+            ViewModel.StatusMessage = "캔버스 영역을 저장했습니다. 이제 Roblox 도구 위치 6개를 안내에 따라 F6으로 기록하세요.";
         }
         catch (Exception exception)
         {
@@ -467,11 +521,11 @@ public sealed partial class MainPage : Page, IDisposable
             {
                 _executionWindow = new ExecutionPanelWindow();
             }
-            _executionWindow.Update("15초 안에 Roblox Podiums 창으로 전환하세요.", 0d);
+            _executionWindow.Update("Roblox Podiums 창을 자동으로 활성화하는 중입니다.", 0d);
             _executionWindow.ShowNearTopRight();
-            ViewModel.IsExecutionPanelOpen = true;
             ViewModel.Stage = WorkspaceStage.Ready;
-            ViewModel.StatusMessage = "15초 안에 Roblox Podiums 창으로 전환하세요. F8은 즉시 중지입니다.";
+            ViewModel.StatusMessage = "Roblox Podiums 창을 자동으로 활성화합니다. F8은 즉시 중지입니다.";
+            App.Window.AppWindow.Hide();
             var progress = new Progress<DrawingProgress>(item =>
             {
                 ViewModel.SetProgress(item.ClampedFraction);
@@ -506,12 +560,14 @@ public sealed partial class MainPage : Page, IDisposable
         }
         catch (Exception exception)
         {
-            ViewModel.Stage = WorkspaceStage.Failed;
+            ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = $"그리기를 실행하지 못했습니다: {exception.Message}";
+            ViewModel.SetProgress(0d);
         }
         finally
         {
             _executionWindow?.Hide();
+            App.Window.Activate();
             ViewModel.IsExecutionPanelOpen = false;
             UnregisterExecutionHotkeys();
             _executionCancellation?.Dispose();
@@ -577,7 +633,8 @@ public sealed partial class MainPage : Page, IDisposable
         {
             >= 1350 => 370,
             >= 980 => 350,
-            _ => 310
+            >= 720 => 340,
+            _ => Math.Clamp(width * 0.47d, 280d, 330d)
         });
         RootLayout.Padding = mode switch
         {
@@ -588,7 +645,7 @@ public sealed partial class MainPage : Page, IDisposable
         RootLayout.RowSpacing = shortHeight ? 8 : 12;
         WorkspaceLayout.ColumnSpacing = shortHeight ? 8 : 12;
         PreviewCard.Padding = shortHeight ? new Thickness(12) : new Thickness(18);
-        HeaderSubtitle.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        HeaderSubtitle.Visibility = shortHeight || width < 980 ? Visibility.Collapsed : Visibility.Visible;
         StepRailHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         SafetyHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         PreviewDescription.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
@@ -596,7 +653,20 @@ public sealed partial class MainPage : Page, IDisposable
         CalibrationHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         AnalysisDescriptionPanel.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         PreviewBadge.Visibility = width < 900 ? Visibility.Collapsed : Visibility.Visible;
-        ExecutionOverlay.Margin = mode == ResponsiveLayoutMode.Compact ? new Thickness(10) : new Thickness(18);
+        UpdateHeaderActions(width);
+    }
+
+    private void UpdateHeaderActions(double width)
+    {
+        var compact = width < 900d;
+        HelpButton.Content = compact ? "?" : "사용법";
+        HelpButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
+        FloatingButton.Content = compact
+            ? ViewModel.IsFloating ? "고정 해제" : "플로팅"
+            : ViewModel.FloatingLabel;
+        FloatingButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
+        AdvancedSettingsButton.Content = compact ? "설정" : "고급 설정";
+        AdvancedSettingsButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
     }
 
     private void ApplyTheme(AppThemeMode mode)
@@ -689,8 +759,12 @@ public sealed partial class MainPage : Page, IDisposable
                     var result = _calibration.Complete();
                     var profile = await App.DrawingSession.SaveCalibrationAsync(result, ViewModel.ProfileName);
                     ViewModel.SetProfileState(profile.Name, true);
-                    ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
-                    ViewModel.StatusMessage = "Podiums 캘리브레이션을 저장했습니다. 이미지를 분석한 뒤 실행할 수 있습니다.";
+                    ViewModel.Stage = _preparedDrawing is not null
+                        ? WorkspaceStage.Ready
+                        : ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
+                    ViewModel.StatusMessage = _preparedDrawing is not null
+                        ? "Podiums 캔버스와 도구 위치를 저장했습니다. 바로 그리기를 시작할 수 있습니다."
+                        : "Podiums 캔버스와 도구 위치를 저장했습니다. 이미지를 분석한 뒤 실행하세요.";
                     FinishCalibration(true);
                 }
                 catch (Exception exception)
@@ -715,7 +789,9 @@ public sealed partial class MainPage : Page, IDisposable
         ViewModel.IsCalibrating = false;
         if (!completed)
         {
-            ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
+            ViewModel.Stage = _preparedDrawing is not null
+                ? WorkspaceStage.Ready
+                : ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
         }
 
         _calibration = null;
@@ -733,12 +809,12 @@ public sealed partial class MainPage : Page, IDisposable
         {
             PodiumsCalibrationStep.CaptureCanvasTopLeft => "1/8 · 흰색 캔버스의 왼쪽 위 모서리에 마우스를 놓고 F6",
             PodiumsCalibrationStep.CaptureCanvasBottomRight => "2/8 · 흰색 캔버스의 오른쪽 아래 모서리에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CapturePencilTool => "3/8 · 연필 도구 가운데에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureEraserTool => "4/8 · 지우개 도구 가운데에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureFillTool => "5/8 · 채우기 도구 가운데에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureBrushSizeMinimum => "6/8 · 굵기 슬라이더의 최소값 위치에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureBrushSizeMaximum => "7/8 · 굵기 슬라이더의 최대값 위치에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureHexInput => "8/8 · HEX 입력란 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CapturePencilTool => "1/6 · 연필 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureEraserTool => "2/6 · 지우개 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureFillTool => "3/6 · 채우기 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureBrushSizeMinimum => "4/6 · 굵기 슬라이더의 최소값 위치에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureBrushSizeMaximum => "5/6 · 굵기 슬라이더의 최대값 위치에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureHexInput => "6/6 · HEX 입력란 가운데에 마우스를 놓고 F6",
             _ => _calibration.State.Message
         };
     }
@@ -811,6 +887,19 @@ public sealed partial class MainPage : Page, IDisposable
             "안전하게" => 1d,
             "매우 빠르게" => 4d,
             _ => 2d
+        };
+
+    private (string Label, double? Ratio) SelectedCanvasAspect()
+        => ViewModel.SelectedCanvasAspect switch
+        {
+            "자유 비율" => ("자유 비율", null),
+            "4:3 가로형" => ("4:3 가로형", 4d / 3d),
+            "16:9 가로형" => ("16:9 가로형", 16d / 9d),
+            "원본 이미지 비율" when _preparedDrawing is { } prepared =>
+                ("원본 이미지 비율", prepared.Image.WorkingFrame.Width / (double)prepared.Image.WorkingFrame.Height),
+            "원본 이미지 비율" =>
+                ("원본 이미지 비율", Math.Max(1d, ViewModel.LogicalWidth) / Math.Max(1d, ViewModel.LogicalHeight)),
+            _ => ("1:1 정사각형", 1d)
         };
 
     private static int SafeWholeNumber(double value, int fallback, int minimum, int maximum)

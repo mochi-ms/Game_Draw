@@ -77,6 +77,37 @@ public sealed class PodiumsAdapterTests
     }
 
     [Fact]
+    public void DragSelectedCanvasSkipsCornerStepsAndKeepsExactBounds()
+    {
+        var bounds = new NormalizedRect(0.22, 0.18, 0.42, 0.61);
+        var session = new PodiumsCalibrationSession(new PodiumsCalibrationOptions
+        {
+            LogicalWidth = 640,
+            LogicalHeight = 480,
+            InitialCanvasBounds = bounds
+        });
+
+        Assert.Equal(PodiumsCalibrationStep.CapturePencilTool, session.State.Step);
+        session.Capture(new NormalizedPoint(0.7, 0.1));
+        session.Capture(new NormalizedPoint(0.8, 0.1));
+        session.Capture(new NormalizedPoint(0.9, 0.1));
+        session.Capture(new NormalizedPoint(0.8, 0.2));
+        session.Capture(new NormalizedPoint(0.7, 0.2));
+        session.Capture(new NormalizedPoint(0.8, 0.2));
+
+        var result = session.Complete();
+
+        Assert.True(result.Succeeded, result.ErrorMessage);
+        Assert.Equal(bounds.X, result.Canvas.Bounds.X, precision: 10);
+        Assert.Equal(bounds.Y, result.Canvas.Bounds.Y, precision: 10);
+        Assert.Equal(bounds.Width, result.Canvas.Bounds.Width, precision: 10);
+        Assert.Equal(bounds.Height, result.Canvas.Bounds.Height, precision: 10);
+        Assert.Equal(640, result.Canvas.LogicalWidth);
+        Assert.Equal(480, result.Canvas.LogicalHeight);
+        Assert.True(result.Controls.IsConfigured);
+    }
+
+    [Fact]
     public void ManualCalibrationAllowsCanvasOnlyWithExplicitWarning()
     {
         var result = PodiumsCalibrationSession.CreateManual(new CanvasProfile
