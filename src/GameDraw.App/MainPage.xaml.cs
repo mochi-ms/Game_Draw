@@ -178,10 +178,11 @@ public sealed partial class MainPage : Page, IDisposable
         content.Children.Add(CreateHelpSection("빠른 시작", "① 이미지 선택 → ② 표현 방식·품질 선택 → ③ 이미지 분석 → ④ 캔버스 영역 드래그 → ⑤ F5로 시작합니다. F7은 일시정지, F8은 즉시 중지입니다."));
         content.Children.Add(CreateHelpSection("미리보기 기준", "분석 뒤 보이는 ‘실행 경로 미리보기’가 실제 마우스가 따라갈 선입니다. 원본 픽셀이 아니라 실행 스트로크를 직접 렌더링하므로 결과를 시작 전에 확인할 수 있습니다."));
         content.Children.Add(CreateHelpSection("자연스러운 펜선", "인물·애니 캐릭터 권장 모드입니다. 굵은 원본 선의 양쪽 테두리가 아니라 암부의 중심선을 뽑아, 작가가 한 번씩 선을 긋는 것처럼 이중선과 털선을 줄입니다."));
+        content.Children.Add(CreateHelpSection("원본 펜선 보존", "프린터처럼 위에서 아래로 가로줄을 채우지 않습니다. 원본의 검은 펜선을 1픽셀 중심 곡선으로 바꾼 뒤 큰 실루엣과 외곽선, 얼굴의 눈·코·입, 머리카락과 옷의 내부 디테일 순으로 실행합니다. 획 사이를 임의의 긴 선으로 연결하지 않습니다."));
         content.Children.Add(CreateHelpSection("정밀 윤곽선", "색·밝기 경계를 세밀하게 따는 모드입니다. 로고, 도형, 이미 완성된 흑백 선화에 적합하지만 사진에서는 작은 질감도 선으로 잡힐 수 있습니다."));
         content.Children.Add(CreateHelpSection("원본 색상 · 픽셀 컬러", "원본 색상은 같은 색 구간을 빠른 가로 획으로 채우고, 픽셀 컬러는 작은 도트 그림을 점 단위로 보존합니다. 연결 탭에서 도구·HEX 위치를 먼저 저장하세요. 펜 굵기는 게임에서 수동으로 맞추며 GameDraw는 슬라이더를 건드리지 않습니다. 색 변경은 HEX 입력란 클릭 → Ctrl+A → Delete → 코드 입력 → Enter 순서로 자동 실행됩니다."));
         content.Children.Add(CreateHelpSection("그림 품질", "빠른 초안은 선 수를 크게 줄이고, 균형은 기본 권장값, 고품질은 얼굴·머리카락 세부를 늘리며, 원본 우선은 가장 촘촘한 경로를 만듭니다. 선택에 따라 미리보기와 실제 마우스 경로가 함께 바뀝니다."));
-        content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴·눈이 있을 가능성이 높은 위쪽 중심 영역의 선을 먼저 그립니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
+        content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴 영역을 찾아 디테일 순서에 반영합니다. 원본 펜선 보존 모드는 큰 외곽선을 먼저 그리고 얼굴 특징으로 넘어갑니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
         content.Children.Add(CreateHelpSection("속도와 정확도", "매우 빠르게에서도 긴 벡터를 순간 이동하지 않고 게임이 인식할 수 있는 짧은 간격으로 보간합니다. 품질을 올리면 이 간격도 촘촘해져 더 정확하지만 시간이 늘어납니다."));
         content.Children.Add(CreateHelpSection("연결과 안전", "캔버스 비율을 고르고 흰 그림판만 드래그해 지정합니다. 실행 시 Roblox가 활성화되며 F5 시작, F7 일시정지/재개, F8 즉시 마우스 해제·중지입니다. ‘작업 초기화’는 진행 중 작업도 중지합니다."));
         var dialog = new ContentDialog
@@ -1031,7 +1032,7 @@ public sealed partial class MainPage : Page, IDisposable
     private DrawingMode SelectedDrawingMode() => ViewModel.SelectedMode switch
     {
         "원본 색상" => DrawingMode.HorizontalScanline,
-        "원본 펜선 보존" => DrawingMode.HorizontalScanline,
+        "원본 펜선 보존" => DrawingMode.ArtistStroke,
         "픽셀 컬러" => DrawingMode.Pixel,
         _ => DrawingMode.CleanStroke
     };

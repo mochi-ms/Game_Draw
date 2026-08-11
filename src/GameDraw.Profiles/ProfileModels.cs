@@ -101,7 +101,8 @@ public sealed record GameProfile
             DrawingMode.Contour,
             DrawingMode.Fill,
             DrawingMode.Hybrid,
-            DrawingMode.CleanStroke
+            DrawingMode.CleanStroke,
+            DrawingMode.ArtistStroke
         };
 
     public static GameProfile CreateDefault(

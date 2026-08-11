@@ -31,13 +31,11 @@ var quantized = new PaletteQuantizer().Quantize(lineArt, palette, new Quantizati
 });
 var planning = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
 {
-    Mode = DrawingMode.CleanStroke,
+    Mode = DrawingMode.ArtistStroke,
     MovementPixelsPerSecond = 4_000,
     PerStrokeSafetyDelayMilliseconds = 38
 });
-var plan = subject.FacePriorityRegion is { } face
-    ? DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, face)
-    : planning.Plan;
+var plan = DrawingPlanPostProcessor.OrderArtistically(planning.Plan, subject.FacePriorityRegion);
 var preview = DrawingPlanPostProcessor.RenderPreview(plan, 2);
 var filledPlan = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
 {

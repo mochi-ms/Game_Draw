@@ -234,6 +234,23 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void TwoPixelPreviewBrushIsExactlyTwoPixelsWide()
+    {
+        var stroke = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.5, 0.5)
+        });
+        var plan = new DrawingPlan(
+            DrawingMode.ArtistStroke,
+            new GameDraw.Core.Geometry.PixelSize(5, 5),
+            new[] { new DrawingColorGroup(RgbColor.Black, new[] { stroke }) });
+
+        var preview = DrawingPlanPostProcessor.RenderPreview(plan, 2);
+
+        Assert.Equal(4, preview.Pixels.Count(pixel => pixel.Color == RgbColor.Black));
+    }
+
+    [Fact]
     public void FacePriorityMovesIntersectingStrokesBeforeOuterForm()
     {
         var outer = new DrawingStroke(new[]
@@ -256,6 +273,68 @@ public sealed class ModePlannerTests
             new GameDraw.Core.Geometry.NormalizedRect(0.25, 0.1, 0.5, 0.4));
 
         Assert.Same(eye, result.ColorGroups[0].Strokes[0]);
+    }
+
+    [Fact]
+    public void ArtistOrderDrawsLargeOuterFormBeforeFacialDetails()
+    {
+        var outer = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.1, 0.1),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.9, 0.1),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.9, 0.9),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.1, 0.9)
+        }, isClosed: true);
+        var eye = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.4, 0.35),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.6, 0.35)
+        });
+        var hairDetail = new DrawingStroke(new[]
+        {
+            new GameDraw.Core.Geometry.NormalizedPoint(0.45, 0.12),
+            new GameDraw.Core.Geometry.NormalizedPoint(0.5, 0.22)
+        });
+        var plan = new DrawingPlan(
+            DrawingMode.ArtistStroke,
+            new GameDraw.Core.Geometry.PixelSize(100, 100),
+            new[] { new DrawingColorGroup(RgbColor.Black, new[] { hairDetail, eye, outer }) });
+
+        var result = DrawingPlanPostProcessor.OrderArtistically(
+            plan,
+            new GameDraw.Core.Geometry.NormalizedRect(0.25, 0.2, 0.5, 0.4));
+
+        Assert.Same(outer, result.ColorGroups[0].Strokes[0]);
+        Assert.Same(eye, result.ColorGroups[0].Strokes[1]);
+        Assert.Same(hairDetail, result.ColorGroups[0].Strokes[2]);
+    }
+
+    [Fact]
+    public void ArtistStrokeModeUsesContinuousCenterlinePathsInsteadOfScanRows()
+    {
+        const int width = 18;
+        const int height = 9;
+        var pixels = Enumerable.Repeat(RgbaPixel.Transparent, width * height).ToArray();
+        for (var y = 3; y <= 5; y++)
+        {
+            for (var x = 2; x <= 15; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        var image = new PaletteQuantizer().Quantize(
+            new ImageFrame(width, height, pixels),
+            new ColorPalette(new[] { RgbColor.Black }),
+            new QuantizationOptions { PreserveAlpha = true });
+        var result = new DrawingPlanner().Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.ArtistStroke
+        });
+
+        Assert.Equal(DrawingMode.ArtistStroke, result.SelectedMode);
+        Assert.Equal(1, result.Estimate.StrokeCount);
+        Assert.Equal(2, result.Estimate.PointCount);
     }
 
     private static QuantizedImage Quantize(IReadOnlyList<RgbColor> colors, int width, int height)

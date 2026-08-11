@@ -409,16 +409,19 @@ public sealed class WindowsDrawingExecutor :
                     await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
                     if (!cancellationToken.IsCancellationRequested && !StopRequested)
                     {
-                        // Repeat the release halfway through the pen-up window.
-                        // Some game frames can miss a single transition while
-                        // processing dense cursor movement; a confirmed release
-                        // prevents the next stroke's positioning move becoming
+                        // Confirm release across two additional samples. Roblox
+                        // may coalesce a mouse-up that lands in the same frame as
+                        // dense movement; three releases spanning the full guard
+                        // window prevent the next positioning move from painting
                         // a long connector across the canvas.
-                        var confirmationDelay = options.PenUpSettleMilliseconds / 2;
-                        await DelayUnscaledAsync(confirmationDelay, CancellationToken.None).ConfigureAwait(false);
+                        var firstConfirmationDelay = options.PenUpSettleMilliseconds / 3;
+                        var secondConfirmationDelay = options.PenUpSettleMilliseconds / 3;
+                        await DelayUnscaledAsync(firstConfirmationDelay, CancellationToken.None).ConfigureAwait(false);
+                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                        await DelayUnscaledAsync(secondConfirmationDelay, CancellationToken.None).ConfigureAwait(false);
                         await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
                         await DelayUnscaledAsync(
-                            options.PenUpSettleMilliseconds - confirmationDelay,
+                            options.PenUpSettleMilliseconds - firstConfirmationDelay - secondConfirmationDelay,
                             CancellationToken.None).ConfigureAwait(false);
                     }
                 }

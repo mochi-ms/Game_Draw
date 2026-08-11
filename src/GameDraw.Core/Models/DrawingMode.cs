@@ -12,5 +12,6 @@ public enum DrawingMode
     Contour = 4,
     Fill = 5,
     Hybrid = 6,
-    CleanStroke = 7
+    CleanStroke = 7,
+    ArtistStroke = 8
 }

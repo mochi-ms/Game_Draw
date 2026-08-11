@@ -44,7 +44,8 @@ public static class GenericHexProfileSettings
                 DrawingMode.HorizontalScanline,
                 DrawingMode.VerticalScanline,
                 DrawingMode.Contour,
-                DrawingMode.CleanStroke
+                DrawingMode.CleanStroke,
+                DrawingMode.ArtistStroke
             }
         };
 
@@ -127,7 +128,8 @@ public sealed class GenericHexWhiteboardAdapter : IGameAdapter
         DrawingMode.HorizontalScanline,
         DrawingMode.VerticalScanline,
         DrawingMode.Contour,
-        DrawingMode.CleanStroke
+        DrawingMode.CleanStroke,
+        DrawingMode.ArtistStroke
     };
 
     public GameProfile CreateDefaultProfile()

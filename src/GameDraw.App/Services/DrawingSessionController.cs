@@ -368,7 +368,19 @@ public sealed class DrawingSessionController : IDisposable
             () => _planner.Plan(image.Quantized, plannerOptions),
             cancellationToken).ConfigureAwait(false);
         var facePriorityApplied = false;
-        if (subjectFocus.FacePriorityRegion is { } faceRegion)
+        if (planning.Plan.Mode == DrawingMode.ArtistStroke)
+        {
+            var artistOrdered = DrawingPlanPostProcessor.OrderArtistically(
+                planning.Plan,
+                subjectFocus.FacePriorityRegion);
+            planning = planning with
+            {
+                Plan = artistOrdered,
+                Estimate = _planner.Estimate(artistOrdered, plannerOptions)
+            };
+            facePriorityApplied = subjectFocus.FacePriorityRegion is not null;
+        }
+        else if (subjectFocus.FacePriorityRegion is { } faceRegion)
         {
             var prioritized = DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, faceRegion);
             planning = planning with
@@ -379,7 +391,12 @@ public sealed class DrawingSessionController : IDisposable
             facePriorityApplied = true;
         }
 
-        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan);
+        // Podiums' minimum visible pencil (3 screen pixels in the current UI)
+        // maps to roughly a two-pixel logical brush on the usual calibrated
+        // canvas. Render artist paths at that width so the preview represents
+        // the manually selected in-game pencil more faithfully.
+        var previewBrushDiameter = planning.Plan.Mode == DrawingMode.ArtistStroke ? 2 : 1;
+        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan, previewBrushDiameter);
         return new PreparedDrawing(
             sourcePath,
             image,
@@ -465,7 +482,7 @@ public sealed class DrawingSessionController : IDisposable
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
                     StrokeStartSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 4 : 6,
                     PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 3 : 3,
-                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 14,
+                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 34 : 24,
                     MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 18,
                     MaximumMoveStepPixels = QualitySettings.For(
                         prepared.Quality,

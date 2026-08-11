@@ -12,7 +12,10 @@ namespace GameDraw.Planning.Modes;
 /// </summary>
 internal static class CleanStrokePlanner
 {
-    public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
+    public static DrawingPlan Create(
+        QuantizedImage image,
+        DrawingPlannerOptions options,
+        DrawingMode mode = DrawingMode.CleanStroke)
     {
         var strokesByColor = new Dictionary<int, List<DrawingStroke>>();
         foreach (var paletteIndex in PlanningUtilities.GetPaletteIndices(image, options))
@@ -45,7 +48,7 @@ internal static class CleanStrokePlanner
             }
         }
 
-        return PlanningUtilities.BuildPlan(image, DrawingMode.CleanStroke, strokesByColor, options);
+        return PlanningUtilities.BuildPlan(image, mode, strokesByColor, options);
     }
 
     private static bool[] BuildMask(

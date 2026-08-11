@@ -11,6 +11,46 @@ namespace GameDraw.Planning;
 /// </summary>
 public static class DrawingPlanPostProcessor
 {
+    /// <summary>
+    /// Orders vector strokes like a deliberate illustration pass: large
+    /// silhouette strokes first, facial features second, and local details
+    /// last. It never adds a connector between unrelated paths.
+    /// </summary>
+    public static DrawingPlan OrderArtistically(
+        DrawingPlan plan,
+        NormalizedRect? faceRegion = null)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.ColorGroups.Count == 0)
+        {
+            return plan;
+        }
+
+        var orderedGroups = new List<DrawingColorGroup>(plan.ColorGroups.Count);
+        foreach (var group in plan.ColorGroups)
+        {
+            var metrics = group.Strokes.Select(StrokeMetrics.Create).ToArray();
+            var largestSpan = metrics.Max(item => item.Span);
+            var largestArea = metrics.Max(item => item.Area);
+            var ordered = metrics
+                .OrderBy(item => ArtistStage(item, largestSpan, largestArea, faceRegion))
+                .ThenBy(item => ArtistStage(item, largestSpan, largestArea, faceRegion) == 0
+                    ? -item.Span
+                    : 0d)
+                .ThenBy(item => faceRegion is { } region && Intersects(item.Stroke, region)
+                    ? FacialFeatureRank(item.Stroke, region)
+                    : 0)
+                .ThenByDescending(item => item.Length)
+                .ThenBy(item => item.Top)
+                .ThenBy(item => item.Left)
+                .Select(item => item.Stroke)
+                .ToArray();
+            orderedGroups.Add(new DrawingColorGroup(group.Color, ordered));
+        }
+
+        return new DrawingPlan(plan.Mode, plan.LogicalSize, orderedGroups);
+    }
+
     public static DrawingPlan PrioritizeRegion(DrawingPlan plan, NormalizedRect region)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -111,13 +151,17 @@ public static class DrawingPlanPostProcessor
 
         void Paint(int x, int y, RgbColor color)
         {
+            var minimumOffset = -(brushDiameterPixels / 2);
+            var maximumOffset = (brushDiameterPixels - 1) / 2;
+            var brushCenter = (minimumOffset + maximumOffset) / 2d;
             var radius = brushDiameterPixels / 2d;
-            var extent = brushDiameterPixels / 2;
-            for (var offsetY = -extent; offsetY <= extent; offsetY++)
+            for (var offsetY = minimumOffset; offsetY <= maximumOffset; offsetY++)
             {
-                for (var offsetX = -extent; offsetX <= extent; offsetX++)
+                for (var offsetX = minimumOffset; offsetX <= maximumOffset; offsetX++)
                 {
-                    if ((offsetX * offsetX) + (offsetY * offsetY) > radius * radius)
+                    var distanceX = offsetX - brushCenter;
+                    var distanceY = offsetY - brushCenter;
+                    if ((distanceX * distanceX) + (distanceY * distanceY) > radius * radius)
                     {
                         continue;
                     }
@@ -190,6 +234,49 @@ public static class DrawingPlanPostProcessor
     private static bool Contains(NormalizedRect rect, NormalizedPoint point)
         => point.X >= rect.X && point.X <= rect.X + rect.Width &&
            point.Y >= rect.Y && point.Y <= rect.Y + rect.Height;
+
+    private static int ArtistStage(
+        StrokeMetrics metrics,
+        double largestSpan,
+        double largestArea,
+        NormalizedRect? faceRegion)
+    {
+        var isOuterStroke =
+            metrics.Span >= largestSpan * 0.55d ||
+            (metrics.Stroke.IsClosed && metrics.Area >= largestArea * 0.18d);
+        if (isOuterStroke)
+        {
+            return 0;
+        }
+
+        return faceRegion is { } region && Intersects(metrics.Stroke, region) ? 1 : 2;
+    }
+
+    private sealed record StrokeMetrics(
+        DrawingStroke Stroke,
+        double Left,
+        double Top,
+        double Span,
+        double Area,
+        double Length)
+    {
+        public static StrokeMetrics Create(DrawingStroke stroke)
+        {
+            var left = stroke.Points.Min(point => point.X);
+            var right = stroke.Points.Max(point => point.X);
+            var top = stroke.Points.Min(point => point.Y);
+            var bottom = stroke.Points.Max(point => point.Y);
+            var width = right - left;
+            var height = bottom - top;
+            return new StrokeMetrics(
+                stroke,
+                left,
+                top,
+                Math.Sqrt((width * width) + (height * height)),
+                width * height,
+                stroke.TravelDistance);
+        }
+    }
 
     private static PixelPoint ToPixel(NormalizedPoint point, int width, int height)
         => new(
