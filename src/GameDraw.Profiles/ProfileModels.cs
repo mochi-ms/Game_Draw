@@ -81,6 +81,14 @@ public sealed record GameProfile
 
     public TimingProfile Timing { get; init; } = new();
 
+    /// <summary>
+    /// Adapter-specific settings kept as string values so profiles remain
+    /// portable and can be extended without changing the core schema for
+    /// every supported game.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> AdapterSettings { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyList<DrawingMode> SupportedModes { get; init; } =
         new[]
         {

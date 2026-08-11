@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameDraw.Profiles\GameDraw.Profiles.csproj" />
+    <ProjectReference Include="..\..\src\GameDraw.GameAdapters\GameDraw.GameAdapters.csproj" />
     <ProjectReference Include="..\..\src\GameDraw.Automation.Windows\GameDraw.Automation.Windows.csproj" />
     <ProjectReference Include="..\..\src\GameDraw.Planning\GameDraw.Planning.csproj" />
   </ItemGroup>
