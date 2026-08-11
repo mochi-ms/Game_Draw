@@ -103,6 +103,7 @@ public sealed class DrawingPlanner : IDrawingPlanner
             DrawingMode.Contour => ContourPlanner.Create(image, options),
             DrawingMode.Fill => FillPlanner.Create(image, options),
             DrawingMode.Hybrid => HybridPlanner.Create(image, options),
+            DrawingMode.CleanStroke => CleanStrokePlanner.Create(image, options),
             DrawingMode.Auto => throw new ArgumentException("자동 모드는 후보 생성 경로에서만 사용할 수 있습니다.", nameof(mode)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
@@ -121,6 +122,7 @@ public sealed class DrawingPlanner : IDrawingPlanner
             DrawingMode.Contour => $"경계 윤곽선 중심 · 스트로크 {estimate.StrokeCount}개",
             DrawingMode.Fill => $"면 채우기 중심 · 스트로크 {estimate.StrokeCount}개",
             DrawingMode.Hybrid => $"윤곽선+채우기 · 예상 {estimate.EstimatedDuration.TotalSeconds:F1}초",
+            DrawingMode.CleanStroke => $"중심선을 연속 획으로 정돈 · 스트로크 {estimate.StrokeCount}개",
             _ => "자동 후보"
         };
 }

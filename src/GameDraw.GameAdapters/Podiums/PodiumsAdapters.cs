@@ -221,7 +221,8 @@ public sealed class PodiumsGameAdapter : IGameAdapter
         DrawingMode.VerticalScanline,
         DrawingMode.Contour,
         DrawingMode.Fill,
-        DrawingMode.Hybrid
+        DrawingMode.Hybrid,
+        DrawingMode.CleanStroke
     };
 
     public string Id => "podiums.roblox";

@@ -11,5 +11,6 @@ public enum DrawingMode
     VerticalScanline = 3,
     Contour = 4,
     Fill = 5,
-    Hybrid = 6
+    Hybrid = 6,
+    CleanStroke = 7
 }

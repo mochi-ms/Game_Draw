@@ -297,7 +297,7 @@ public sealed class DrawingSessionController : IDisposable
         var plannerOptions = new DrawingPlannerOptions
         {
             Mode = renderStyle == DrawingRenderStyle.LineArt && mode == DrawingMode.Auto
-                ? DrawingMode.HorizontalScanline
+                ? DrawingMode.CleanStroke
                 : mode,
             MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond * speedMultiplier,
             InterStrokeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),

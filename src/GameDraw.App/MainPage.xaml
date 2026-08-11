@@ -69,6 +69,12 @@
                         Padding="14,8"
                         AutomationProperties.Name="게임 위 플로팅 전환" />
                     <Button
+                        x:Name="ResetButton"
+                        Click="ResetWorkspace_Click"
+                        Content="작업 초기화"
+                        Padding="14,8"
+                        AutomationProperties.Name="현재 작업 중지 및 초기화" />
+                    <Button
                         x:Name="AdvancedSettingsButton"
                         Content="고급 설정"
                         Padding="14,8">
@@ -471,6 +477,7 @@
                                     <x:String>픽셀 점찍기</x:String>
                                     <x:String>가로 스캔라인</x:String>
                                     <x:String>세로 스캔라인</x:String>
+                                    <x:String>클린 펜 스트로크</x:String>
                                     <x:String>윤곽선</x:String>
                                     <x:String>면 채우기</x:String>
                                     <x:String>하이브리드</x:String>
@@ -546,6 +553,165 @@
                     </Border>
                 </Grid>
             </Grid>
+        </Grid>
+
+        <Grid
+            x:Name="FloatingLayout"
+            Padding="12,10,12,12"
+            RowSpacing="8"
+            Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="GameDraw" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Click="ShowHelp_Click" Content="?" Padding="10,7" AutomationProperties.Name="사용법 보기" />
+                <Button Grid.Column="2" Click="ResetWorkspace_Click" Content="초기화" Padding="10,7" />
+                <Button Grid.Column="3" Click="ToggleFloating_Click" Content="크게" Padding="10,7" />
+            </Grid>
+
+            <Border Grid.Row="1" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,8">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <TextBlock
+                        Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <TabView
+                Grid.Row="2"
+                IsAddTabButtonVisible="False">
+                <TabViewItem Header="이미지" IsClosable="False">
+                    <Border Style="{ThemeResource CardBorderStyle}" Padding="14">
+                        <Grid RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="0" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="0" Visibility="Collapsed">
+                                <Image x:Name="FloatingPreviewImage" Stretch="Uniform" />
+                            </Border>
+                            <Grid Grid.Row="1" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind ViewModel.SelectedImageName, Mode=OneWay}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Click="SelectImage_Click" Content="선택" Padding="10,7" />
+                            </Grid>
+                            <Grid Grid.Row="2" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Header="표현 방식" SelectedItem="{x:Bind ViewModel.SelectedRenderStyle, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>자동 채색</x:String>
+                                    <x:String>검정 선화</x:String>
+                                </ComboBox>
+                                <ComboBox Grid.Column="1" Header="실행 속도" SelectedItem="{x:Bind ViewModel.SelectedSpeed, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>안전하게</x:String>
+                                    <x:String>빠르게</x:String>
+                                    <x:String>매우 빠르게</x:String>
+                                </ComboBox>
+                            </Grid>
+                            <Grid Grid.Row="3" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.45*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Header="그리는 방법" SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>자동 추천</x:String>
+                                    <x:String>클린 펜 스트로크</x:String>
+                                    <x:String>픽셀 점찍기</x:String>
+                                    <x:String>가로 스캔라인</x:String>
+                                    <x:String>세로 스캔라인</x:String>
+                                    <x:String>윤곽선</x:String>
+                                    <x:String>면 채우기</x:String>
+                                    <x:String>하이브리드</x:String>
+                                </ComboBox>
+                                <NumberBox Grid.Column="1" Header="최대 색상" Minimum="2" Maximum="256" SmallChange="8" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
+                            </Grid>
+                            <TextBlock Grid.Row="4" Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Button Grid.Row="5" Click="PrepareDrawing_Click" Content="이미지 분석" IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,9" />
+                        </Grid>
+                    </Border>
+                </TabViewItem>
+
+                <TabViewItem Header="연결" IsClosable="False">
+                    <Border Style="{ThemeResource CardBorderStyle}" Padding="16">
+                        <StackPanel Spacing="14">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Podiums 캔버스 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                                <TextBlock Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}" Foreground="{ThemeResource PrimaryBrush}" FontWeight="SemiBold" />
+                            </StackPanel>
+                            <ComboBox Header="캔버스 비율" SelectedItem="{x:Bind ViewModel.SelectedCanvasAspect, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                <x:String>자유 비율</x:String>
+                                <x:String>1:1 정사각형</x:String>
+                                <x:String>4:3 가로형</x:String>
+                                <x:String>16:9 가로형</x:String>
+                                <x:String>원본 이미지 비율</x:String>
+                            </ComboBox>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
+                                <Button Grid.Column="1" Click="FullProfileSetup_Click" Content="도구 위치 재설정" HorizontalAlignment="Stretch" Padding="12,10" />
+                            </Grid>
+                            <TextBlock Text="영역 드래그는 흰 그림판만 박스로 지정합니다. 도구 위치가 바뀐 경우에만 재설정을 사용하세요." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Border Padding="12" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}" TextWrapping="Wrap" />
+                                    <Button Click="CancelCalibration_Click" Content="캘리브레이션 취소" HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                            </Border>
+                            <Border Padding="12" Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12">
+                                <TextBlock Text="캔버스를 지정한 뒤 이미지 탭에서 분석하고, 실행 탭에서 시작하세요. 실행 시 GameDraw는 자동으로 숨겨집니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </TabViewItem>
+
+                <TabViewItem Header="실행" IsClosable="False">
+                    <Border Style="{ThemeResource CardBorderStyle}" Padding="16">
+                        <Grid RowSpacing="14">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid>
+                                <TextBlock Text="자동 그리기 실행" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                                <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}" Foreground="{ThemeResource PrimaryBrush}" FontWeight="SemiBold" />
+                            </Grid>
+                            <ProgressBar Grid.Row="1" Maximum="1" Value="{x:Bind ViewModel.Progress, Mode=OneWay}" />
+                            <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.PlanSummary, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Button Grid.Row="3" Click="StartDrawing_Click" Content="Podiums에 그리기 시작" IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,12" Style="{StaticResource AccentButtonStyle}" />
+                            <Button Grid.Row="4" Click="ResetWorkspace_Click" Content="중지하고 새 작업으로 초기화" HorizontalAlignment="Stretch" Padding="14,10" />
+                        </Grid>
+                    </Border>
+                </TabViewItem>
+            </TabView>
         </Grid>
 
         <Grid

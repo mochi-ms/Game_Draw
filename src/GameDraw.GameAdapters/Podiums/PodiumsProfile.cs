@@ -211,7 +211,8 @@ public static class PodiumsProfileSettings
                 DrawingMode.VerticalScanline,
                 DrawingMode.Contour,
                 DrawingMode.Fill,
-                DrawingMode.Hybrid
+                DrawingMode.Hybrid,
+                DrawingMode.CleanStroke
             }
         };
 

@@ -20,7 +20,8 @@ public sealed class PodiumsAdapterTests
         Assert.Equal("podiums.roblox", adapter.Id);
         Assert.Equal(ColorAdapterKind.HexInput, profile.ColorAdapter.Kind);
         Assert.True(profile.ColorAdapter.SupportsExactColor);
-        Assert.Equal(7, profile.SupportedModes.Count);
+        Assert.Equal(8, profile.SupportedModes.Count);
+        Assert.Contains(GameDraw.Core.Models.DrawingMode.CleanStroke, profile.SupportedModes);
         Assert.False(PodiumsProfileSettings.ReadControlLayout(profile).IsConfigured);
         Assert.NotEmpty(profile.Validate().Warnings);
     }

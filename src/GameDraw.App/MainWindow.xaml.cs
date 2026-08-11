@@ -65,8 +65,8 @@ public sealed partial class MainWindow : Window
             if (display is not null)
             {
                 var work = display.WorkArea;
-                var width = Math.Min(work.Width, Math.Max(820, (int)Math.Round(work.Width * 0.52)));
-                var height = Math.Min(work.Height, Math.Max(760, work.Height - 80));
+                var width = Math.Min(work.Width, 760);
+                var height = Math.Min(work.Height, 980);
                 AppWindow.Resize(new SizeInt32(width, height));
                 AppWindow.Move(new PointInt32(work.X + work.Width - width - 24, work.Y + 24));
             }

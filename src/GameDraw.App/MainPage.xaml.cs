@@ -51,6 +51,7 @@ public sealed partial class MainPage : Page, IDisposable
     private bool _initialized;
     private bool _disposed;
     private bool _calibrationCaptureInProgress;
+    private bool _resetRequested;
 
     public MainPage()
     {
@@ -108,7 +109,11 @@ public sealed partial class MainPage : Page, IDisposable
             _hotkeys = null;
         }
 
-        _executionWindow?.Dispose();
+        if (_executionWindow is not null)
+        {
+            _executionWindow.ResetRequested -= ExecutionWindow_ResetRequested;
+            _executionWindow.Dispose();
+        }
         _executionWindow = null;
 
         _disposed = true;
@@ -168,16 +173,30 @@ public sealed partial class MainPage : Page, IDisposable
 
     private async void ShowHelp_Click(object sender, RoutedEventArgs e)
     {
-        var content = new StackPanel { Spacing = 12 };
+        var content = new StackPanel { Spacing = 14, MaxWidth = 560 };
         content.Children.Add(CreateHelpStep("1. 이미지 선택", "PNG, JPG, WEBP 또는 BMP 파일을 고릅니다."));
-        content.Children.Add(CreateHelpStep("2. 이미지 분석", "자동 채색은 원본 색을 줄여 순서대로 칠하고, 검정 선화는 외곽선만 추출합니다. 가로 스캔라인과 ‘빠르게’가 일반적인 권장값입니다."));
+        content.Children.Add(CreateHelpStep("2. 표현 방식", "자동 채색은 원본 색을 줄여 HEX 색상을 바꾸며 칠합니다. 검정 선화는 색을 채우지 않고 경계만 검은 선으로 추출합니다."));
+        content.Children.Add(CreateHelpStep("자동 추천", "이미지의 이동 거리와 횟수를 비교해 빠른 방식을 고릅니다. 검정 선화에서는 털선을 줄이기 위해 클린 펜 스트로크를 우선 사용합니다."));
+        content.Children.Add(CreateHelpStep("클린 펜 스트로크 · 선화 권장", "굵은 픽셀 선을 1픽셀 중심선으로 얇게 만들고, 갈림점과 끝점 사이를 한 번의 연속 획으로 묶습니다. 작은 지그재그도 단순화하므로 작가가 펜 선을 한 번씩 정돈해 긋는 느낌에 가장 가깝습니다. 검정 선화 + 빠르게 조합을 먼저 권장합니다."));
+        content.Children.Add(CreateHelpStep("픽셀 점찍기", "그릴 픽셀마다 클릭합니다. 작은 픽셀아트의 모양은 가장 정확하지만 점 수만큼 클릭하므로 사진이나 큰 선화에는 매우 느립니다."));
+        content.Children.Add(CreateHelpStep("가로 스캔라인", "같은 색이 이어진 가로 구간을 한 줄로 긋습니다. 채색 이미지와 가로로 긴 형태에 빠르지만, 선화에서는 짧은 가로선이 많이 생길 수 있습니다."));
+        content.Children.Add(CreateHelpStep("세로 스캔라인", "같은 색이 이어진 세로 구간을 한 줄로 긋습니다. 세로로 긴 형태나 세로 줄무늬에 유리하며, 선화에서는 짧은 세로선이 많아질 수 있습니다."));
+        content.Children.Add(CreateHelpStep("윤곽선", "각 색 영역의 바깥 테두리를 닫힌 선으로 따라갑니다. 로고·도형·스티커처럼 면 경계가 명확한 그림에 적합합니다. 선화에 쓰면 굵은 선의 양쪽 경계를 그릴 수 있습니다."));
+        content.Children.Add(CreateHelpStep("면 채우기", "각 색 영역 내부를 줄 단위로 채웁니다. 색칠 면이 넓은 일러스트에 적합하지만 선만 필요한 그림에는 사용하지 않는 것이 좋습니다."));
+        content.Children.Add(CreateHelpStep("하이브리드", "윤곽선을 먼저 잡고 내부도 채웁니다. 완성도는 높지만 윤곽선과 채색을 모두 실행하므로 가장 오래 걸릴 수 있습니다."));
         content.Children.Add(CreateHelpStep("3. Podiums 연결", "비율 프리셋을 고르고 Roblox의 흰 캔버스를 한 번 드래그합니다. 도구 좌표가 없을 때만 안내되는 6개 위치에서 F6을 누릅니다."));
         content.Children.Add(CreateHelpStep("4. 그리기 시작", "시작 버튼을 누르면 GameDraw가 숨고 Roblox가 자동으로 활성화됩니다. F7은 일시정지, F8은 마우스를 즉시 놓고 중지합니다."));
+        content.Children.Add(CreateHelpStep("작업 초기화", "분석·캘리브레이션·그리기를 중지하고 현재 이미지와 진행률을 지웁니다. 저장된 Podiums 캔버스와 도구 위치는 유지됩니다."));
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
             Title = "GameDraw 사용법",
-            Content = content,
+            Content = new ScrollViewer
+            {
+                MaxHeight = 640,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = content
+            },
             CloseButtonText = "확인",
             DefaultButton = ContentDialogButton.Close
         };
@@ -187,13 +206,15 @@ public sealed partial class MainPage : Page, IDisposable
     private void ToggleFloating_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.IsFloating = !ViewModel.IsFloating;
+        RootLayout.Visibility = ViewModel.IsFloating ? Visibility.Collapsed : Visibility.Visible;
+        FloatingLayout.Visibility = ViewModel.IsFloating ? Visibility.Visible : Visibility.Collapsed;
         if (App.Window is MainWindow window)
         {
             window.SetFloatingMode(ViewModel.IsFloating);
         }
 
         ViewModel.StatusMessage = ViewModel.IsFloating
-            ? "GameDraw를 게임 화면 위에 고정했습니다. 그리기 중에는 앱을 클릭하지 말고 F7/F8을 사용하세요."
+            ? "컴팩트 플로팅 화면으로 전환했습니다. 탭에서 이미지·연결·실행 기능을 사용할 수 있습니다."
             : "플로팅을 해제하고 원래 창 크기로 돌아왔습니다.";
         UpdateHeaderActions(ActualWidth);
     }
@@ -297,6 +318,47 @@ public sealed partial class MainPage : Page, IDisposable
         ViewModel.BusyMessage = "작업을 취소하는 중…";
     }
 
+    private void ResetWorkspace_Click(object sender, RoutedEventArgs e)
+        => RequestWorkspaceReset();
+
+    private void ExecutionWindow_ResetRequested(object? sender, EventArgs e)
+        => RequestWorkspaceReset();
+
+    private void RequestWorkspaceReset()
+    {
+        _resetRequested = true;
+        _preparationCancellation?.Cancel();
+        if (_calibration is not null)
+        {
+            _calibration.Cancel();
+            FinishCalibration(false);
+        }
+
+        App.DrawingSession.Stop();
+        _executionCancellation?.Cancel();
+        if (_preparationCancellation is null && !App.DrawingSession.IsRunning)
+        {
+            CompleteWorkspaceReset();
+        }
+        else
+        {
+            ViewModel.StatusMessage = "현재 입력을 해제한 뒤 새 작업으로 초기화하는 중입니다…";
+        }
+    }
+
+    private void CompleteWorkspaceReset()
+    {
+        _preparedDrawing = null;
+        _executionWindow?.Hide();
+        PreviewImage.Source = null;
+        PreviewImage.Visibility = Visibility.Collapsed;
+        FloatingPreviewImage.Source = null;
+        EmptyState.Visibility = Visibility.Visible;
+        PreviewBadgeLabel.Text = "원본 미리보기";
+        ViewModel.ResetWorkspace();
+        _resetRequested = false;
+    }
+
     private async Task LoadImageAsync(string path)
     {
         ViewModel.BeginLoading("이미지를 불러오는 중…");
@@ -318,6 +380,7 @@ public sealed partial class MainPage : Page, IDisposable
             };
             bitmap.UriSource = new Uri(path, UriKind.Absolute);
             PreviewImage.Source = bitmap;
+            FloatingPreviewImage.Source = bitmap;
             PreviewBadgeLabel.Text = "원본 미리보기";
             PreviewImage.Visibility = Visibility.Visible;
             EmptyState.Visibility = Visibility.Collapsed;
@@ -325,6 +388,7 @@ public sealed partial class MainPage : Page, IDisposable
         catch (Exception exception)
         {
             PreviewImage.Source = null;
+            FloatingPreviewImage.Source = null;
             PreviewImage.Visibility = Visibility.Collapsed;
             EmptyState.Visibility = Visibility.Visible;
             PreviewBadgeLabel.Text = "원본 미리보기";
@@ -478,8 +542,11 @@ public sealed partial class MainPage : Page, IDisposable
         catch (OperationCanceledException)
         {
             _preparedDrawing = null;
-            ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
-            ViewModel.StatusMessage = "이미지 분석을 취소했습니다.";
+            if (!_resetRequested)
+            {
+                ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
+                ViewModel.StatusMessage = "이미지 분석을 취소했습니다.";
+            }
             return false;
         }
         catch (Exception exception)
@@ -496,6 +563,11 @@ public sealed partial class MainPage : Page, IDisposable
                 _preparationCancellation.Dispose();
                 _preparationCancellation = null;
                 ViewModel.EndLoading();
+            }
+
+            if (_resetRequested && !App.DrawingSession.IsRunning)
+            {
+                CompleteWorkspaceReset();
             }
         }
     }
@@ -520,6 +592,7 @@ public sealed partial class MainPage : Page, IDisposable
             if (_executionWindow is null || _executionWindow.IsDisposed)
             {
                 _executionWindow = new ExecutionPanelWindow();
+                _executionWindow.ResetRequested += ExecutionWindow_ResetRequested;
             }
             _executionWindow.Update("Roblox Podiums 창을 자동으로 활성화하는 중입니다.", 0d);
             _executionWindow.ShowNearTopRight();
@@ -572,6 +645,10 @@ public sealed partial class MainPage : Page, IDisposable
             UnregisterExecutionHotkeys();
             _executionCancellation?.Dispose();
             _executionCancellation = null;
+            if (_resetRequested)
+            {
+                CompleteWorkspaceReset();
+            }
         }
     }
 
@@ -602,6 +679,7 @@ public sealed partial class MainPage : Page, IDisposable
             && string.IsNullOrWhiteSpace(ViewModel.SelectedImagePath))
         {
             PreviewImage.Source = null;
+            FloatingPreviewImage.Source = null;
             PreviewImage.Visibility = Visibility.Collapsed;
             EmptyState.Visibility = Visibility.Visible;
         }
@@ -665,6 +743,8 @@ public sealed partial class MainPage : Page, IDisposable
             ? ViewModel.IsFloating ? "고정 해제" : "플로팅"
             : ViewModel.FloatingLabel;
         FloatingButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
+        ResetButton.Content = compact ? "초기화" : "작업 초기화";
+        ResetButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
         AdvancedSettingsButton.Content = compact ? "설정" : "고급 설정";
         AdvancedSettingsButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
     }
@@ -870,6 +950,7 @@ public sealed partial class MainPage : Page, IDisposable
             "픽셀 점찍기" => DrawingMode.Pixel,
             "가로 스캔라인" => DrawingMode.HorizontalScanline,
             "세로 스캔라인" => DrawingMode.VerticalScanline,
+            "클린 펜 스트로크" => DrawingMode.CleanStroke,
             "윤곽선" => DrawingMode.Contour,
             "면 채우기" => DrawingMode.Fill,
             "하이브리드" => DrawingMode.Hybrid,
@@ -925,6 +1006,7 @@ public sealed partial class MainPage : Page, IDisposable
         stream.Write(bytes, 0, bytes.Length);
         bitmap.Invalidate();
         PreviewImage.Source = bitmap;
+        FloatingPreviewImage.Source = bitmap;
         PreviewBadgeLabel.Text = "변환 미리보기";
     }
 

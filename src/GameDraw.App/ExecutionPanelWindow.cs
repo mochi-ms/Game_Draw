@@ -7,9 +7,9 @@ using Windows.Graphics;
 namespace GameDraw_App;
 
 /// <summary>
-/// Read-only always-on-top execution status. Controls intentionally remain on
-/// global F7/F8 hotkeys so clicking this window cannot steal Roblox focus in
-/// the middle of a stroke.
+/// Compact always-on-top execution status. F7/F8 remain the fastest controls;
+/// the reset button provides a visible recovery path and requests an immediate
+/// input release before the workspace is cleared.
 /// </summary>
 public sealed class ExecutionPanelWindow : Window, IDisposable
 {
@@ -17,6 +17,8 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     private readonly TextBlock _percentage;
     private readonly ProgressBar _progress;
     private bool _disposed;
+
+    public event EventHandler? ResetRequested;
 
     public ExecutionPanelWindow()
     {
@@ -63,6 +65,14 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(210, 203, 213, 225)),
             TextWrapping = TextWrapping.NoWrap
         });
+        var reset = new Button
+        {
+            Content = "중지 후 작업 초기화",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(12, 7, 12, 7)
+        };
+        reset.Click += (_, _) => ResetRequested?.Invoke(this, EventArgs.Empty);
+        content.Children.Add(reset);
         Content = new Border
         {
             Padding = new Thickness(18, 14, 18, 12),
@@ -74,7 +84,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             Child = content
         };
 
-        AppWindow.Resize(new SizeInt32(520, 180));
+        AppWindow.Resize(new SizeInt32(520, 220));
         AppWindow.IsShownInSwitchers = false;
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {

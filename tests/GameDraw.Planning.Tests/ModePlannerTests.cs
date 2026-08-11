@@ -94,6 +94,38 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void CleanStrokeModeTurnsAThickLineIntoOneContinuousSimplifiedStroke()
+    {
+        const int width = 12;
+        const int height = 7;
+        var pixels = Enumerable.Repeat(RgbaPixel.Transparent, width * height).ToArray();
+        for (var y = 2; y <= 4; y++)
+        {
+            for (var x = 1; x <= 10; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        var frame = new ImageFrame(width, height, pixels);
+        var quantized = new PaletteQuantizer().Quantize(
+            frame,
+            new ColorPalette(new[] { RgbColor.Black }),
+            new QuantizationOptions { PreserveAlpha = true });
+
+        var result = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.CleanStroke
+        });
+
+        var stroke = Assert.Single(result.Plan.ColorGroups).Strokes.Single();
+        Assert.False(stroke.IsClosed);
+        Assert.Equal(2, stroke.Points.Count);
+        Assert.True(stroke.Points[0].X < stroke.Points[^1].X);
+        Assert.Equal(DrawingMode.CleanStroke, result.SelectedMode);
+    }
+
+    [Fact]
     public void AutomaticModeScoresEveryStrategyAndReturnsConcreteMode()
     {
         var image = Quantize(new[]

@@ -100,7 +100,8 @@ public sealed record GameProfile
             DrawingMode.VerticalScanline,
             DrawingMode.Contour,
             DrawingMode.Fill,
-            DrawingMode.Hybrid
+            DrawingMode.Hybrid,
+            DrawingMode.CleanStroke
         };
 
     public static GameProfile CreateDefault(
