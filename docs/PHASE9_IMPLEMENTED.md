@@ -38,4 +38,4 @@ dotnet test GameDraw.sln -c Release
 dotnet publish src/GameDraw.App/GameDraw.App.csproj -c Release -r win-x64 --self-contained true -p:PublishTrimmed=false
 ```
 
-The unsigned development output is suitable for local testing. Public distribution still requires selecting a publisher identity and signing certificate.
+`scripts/Build-Release.ps1` packages this output into a versioned ZIP, includes both the .NET and Windows App SDK runtimes, and writes a SHA-256 checksum. The unsigned release candidate is suitable for local and controlled testing. Public distribution still requires selecting a publisher identity and signing certificate.

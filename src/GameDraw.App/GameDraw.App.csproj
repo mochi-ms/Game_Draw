@@ -15,6 +15,10 @@
     <UseWinUI>true</UseWinUI>
     <WinUISDKReferences>false</WinUISDKReferences>
     <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- A self-contained publish is an unpackaged, portable build:
+         include both .NET and Windows App SDK runtime files in its output. -->
+    <WindowsPackageType Condition="'$(SelfContained)' == 'true'">None</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(SelfContained)' == 'true'">true</WindowsAppSDKSelfContained>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- WinUI template uses the generated GameDraw_App root namespace. -->
