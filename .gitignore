@@ -1,0 +1,33 @@
+## .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## Visual Studio / VS Code
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+## WinUI / MSIX
+AppPackages/
+Generated Files/
+*.appx
+*.msix
+*.msixbundle
+*.appinstaller
+
+## Local app data and test artifacts
+artifacts/
+test-results/
+logs/
+profiles/local/
+*.userprofile.json
+
+## OS
+.DS_Store
+Thumbs.db
