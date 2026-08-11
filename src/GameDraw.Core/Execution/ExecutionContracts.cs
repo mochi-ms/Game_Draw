@@ -77,6 +77,10 @@ public interface IPauseController
 
     void Pause();
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Naming",
+        "CA1716:Identifiers should not match keywords",
+        Justification = "Resume is the public pause/resume vocabulary used by the execution contract.")]
     void Resume();
 }
 

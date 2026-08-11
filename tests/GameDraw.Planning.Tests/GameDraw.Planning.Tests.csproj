@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameDraw.Planning\GameDraw.Planning.csproj" />
     <ProjectReference Include="..\..\src\GameDraw.Core\GameDraw.Core.csproj" />
+    <ProjectReference Include="..\..\src\GameDraw.Imaging\GameDraw.Imaging.csproj" />
   </ItemGroup>
 
 </Project>

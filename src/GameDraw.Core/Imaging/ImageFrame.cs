@@ -11,15 +11,8 @@ public sealed class ImageFrame
 
     public ImageFrame(int width, int height, IReadOnlyList<RgbaPixel> pixels)
     {
-        if (width <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(width));
-        }
-
-        if (height <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(height));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
 
         ArgumentNullException.ThrowIfNull(pixels);
         var expected = checked(width * height);

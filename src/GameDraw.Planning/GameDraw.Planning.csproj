@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GameDraw.Core\GameDraw.Core.csproj" />
+    <ProjectReference Include="..\GameDraw.Imaging\GameDraw.Imaging.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
