@@ -17,13 +17,32 @@ public interface ITargetWindowCapture
         CancellationToken cancellationToken = default);
 }
 
+public interface IWindowGeometryProvider
+{
+    ValueTask<TargetWindowGeometry?> GetGeometryAsync(
+        long handle,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record TargetWindowGeometry(
+    TargetWindowSnapshot Snapshot,
+    ScreenRect ClientBounds,
+    uint Dpi)
+{
+    public bool IsValid
+        => Snapshot.Handle != 0
+            && ClientBounds.IsValid
+            && Snapshot.ClientWidth > 0
+            && Snapshot.ClientHeight > 0;
+}
+
 public sealed record CapturedWindowFrame(
     TargetWindowSnapshot Target,
     PixelSize Size,
     DateTimeOffset CapturedAt,
     ReadOnlyMemory<byte> BgraPixels);
 
-public interface IWindowsInputController : IInputController
+public interface IWindowsInputController : IInputSafetyController
 {
 }
 

@@ -71,6 +71,13 @@ public interface IDrawingExecutor
         CancellationToken cancellationToken = default);
 }
 
+public interface IEmergencyStopController
+{
+    bool StopRequested { get; }
+
+    void RequestStop();
+}
+
 public interface IPauseController
 {
     bool IsPaused { get; }

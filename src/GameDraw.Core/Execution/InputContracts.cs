@@ -38,3 +38,14 @@ public interface IInputController
 
     ValueTask TypeTextAsync(string text, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Optional safety surface implemented by input backends that can release any
+/// held state without requiring a matching caller-side sequence.
+/// </summary>
+public interface IInputSafetyController : IInputController
+{
+    ValueTask ReleaseAllButtonsAsync(CancellationToken cancellationToken = default);
+
+    ValueTask ReleaseAllKeysAsync(CancellationToken cancellationToken = default);
+}
