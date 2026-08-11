@@ -622,12 +622,35 @@ public sealed partial class MainPage : Page, IDisposable
 
     private async Task StartDrawingAsync()
     {
-        if (!ViewModel.CanStart || App.DrawingSession.IsRunning)
+        if (App.DrawingSession.IsRunning || ViewModel.IsBusy || ViewModel.IsCalibrating)
         {
             return;
         }
 
+        if (!ViewModel.HasImage)
+        {
+            ViewModel.StatusMessage = "먼저 그릴 이미지를 선택하세요.";
+            return;
+        }
+
+        if (!ViewModel.IsProfileCalibrated)
+        {
+            ViewModel.StatusMessage = "먼저 Podiums 캔버스 영역을 연결하세요.";
+            return;
+        }
+
+        if (ViewModel.SelectedMode is "원본 색상" or "픽셀 컬러" && !ViewModel.IsColorToolsCalibrated)
+        {
+            ViewModel.StatusMessage = "색상 모드는 도구·브러시·HEX 위치 설정이 필요합니다.";
+            return;
+        }
+
         if (_preparedDrawing is null && !await PrepareDrawingAsync())
+        {
+            return;
+        }
+
+        if (!ViewModel.CanStart)
         {
             return;
         }
