@@ -87,12 +87,13 @@ public sealed class ImageProcessingPipeline
         ImageFrame frame,
         ImageProcessingOptions? options = null,
         string? sourceName = null,
-        string sourceFormat = "frame")
+        string sourceFormat = "frame",
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(frame);
         options ??= new ImageProcessingOptions();
         options.Validate();
-        return ProcessDecoded(new DecodedImage(frame.Clone(), sourceName, sourceFormat, 8), options, CancellationToken.None);
+        return ProcessDecoded(new DecodedImage(frame.Clone(), sourceName, sourceFormat, 8), options, cancellationToken);
     }
 
     private ImageProcessingResult ProcessDecoded(
@@ -107,7 +108,9 @@ public sealed class ImageProcessingPipeline
         cancellationToken.ThrowIfCancellationRequested();
 
         var palette = options.FixedPalette ?? _paletteBuilder.Build(working, options.Palette);
+        cancellationToken.ThrowIfCancellationRequested();
         var quantized = _quantizer.Quantize(working, palette, options.Quantization);
+        cancellationToken.ThrowIfCancellationRequested();
         return new ImageProcessingResult(decoded, working, palette, quantized);
     }
 }

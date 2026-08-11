@@ -79,15 +79,13 @@ internal static class ContourPlanner
 
     private static IEnumerable<List<GridPoint>> ChainEdges(List<GridEdge> edges)
     {
-        var remaining = new HashSet<GridEdge>(edges);
+        var remaining = new SortedSet<GridEdge>(edges, GridEdgeComparer.Instance);
+        var outgoing = edges
+            .GroupBy(edge => edge.Start)
+            .ToDictionary(group => group.Key, group => group.ToArray());
         while (remaining.Count > 0)
         {
-            var first = remaining
-                .OrderBy(edge => edge.Start.Y)
-                .ThenBy(edge => edge.Start.X)
-                .ThenBy(edge => edge.End.Y)
-                .ThenBy(edge => edge.End.X)
-                .First();
+            var first = remaining.Min;
             remaining.Remove(first);
 
             var loop = new List<GridPoint> { first.Start };
@@ -97,10 +95,10 @@ internal static class ContourPlanner
             while (current != first.Start && guard-- > 0)
             {
                 loop.Add(current);
-                var candidates = remaining
-                    .Where(edge => edge.Start == current)
-                    .ToList();
-                if (candidates.Count == 0)
+                var candidates = outgoing.TryGetValue(current, out var possible)
+                    ? possible.Where(remaining.Contains).ToArray()
+                    : Array.Empty<GridEdge>();
+                if (candidates.Length == 0)
                 {
                     break;
                 }
@@ -186,4 +184,27 @@ internal static class ContourPlanner
     private readonly record struct GridPoint(int X, int Y);
 
     private readonly record struct GridEdge(GridPoint Start, GridPoint End);
+
+    private sealed class GridEdgeComparer : IComparer<GridEdge>
+    {
+        public static GridEdgeComparer Instance { get; } = new();
+
+        public int Compare(GridEdge left, GridEdge right)
+        {
+            var comparison = left.Start.Y.CompareTo(right.Start.Y);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = left.Start.X.CompareTo(right.Start.X);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            comparison = left.End.Y.CompareTo(right.End.Y);
+            return comparison != 0 ? comparison : left.End.X.CompareTo(right.End.X);
+        }
+    }
 }

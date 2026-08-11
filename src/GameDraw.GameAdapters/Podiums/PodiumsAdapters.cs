@@ -233,7 +233,8 @@ public sealed class PodiumsGameAdapter : IGameAdapter
         GameAdapterCapabilities.ColorSelection |
         GameAdapterCapabilities.BrushSelection |
         GameAdapterCapabilities.FillTool |
-        GameAdapterCapabilities.VisualVerification;
+        GameAdapterCapabilities.VisualVerification |
+        GameAdapterCapabilities.PortableProfiles;
 
     public IReadOnlyList<DrawingMode> SupportedModes => SupportedDrawingModes;
 

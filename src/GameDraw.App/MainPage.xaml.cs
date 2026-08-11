@@ -43,6 +43,7 @@ public sealed partial class MainPage : Page, IDisposable
     private TargetWindowSnapshot? _calibrationTarget;
     private PreparedDrawing? _preparedDrawing;
     private CancellationTokenSource? _executionCancellation;
+    private CancellationTokenSource? _preparationCancellation;
     private ExecutionPanelWindow? _executionWindow;
     private bool _initialized;
     private bool _disposed;
@@ -57,7 +58,7 @@ public sealed partial class MainPage : Page, IDisposable
     private async void Page_Loaded(object sender, RoutedEventArgs e)
     {
         ApplyTheme(ViewModel.ThemeMode);
-        UpdateResponsiveLayout(ActualWidth);
+        UpdateResponsiveLayout(ActualWidth, ActualHeight);
         if (_initialized)
         {
             return;
@@ -94,6 +95,9 @@ public sealed partial class MainPage : Page, IDisposable
         _executionCancellation?.Cancel();
         _executionCancellation?.Dispose();
         _executionCancellation = null;
+        _preparationCancellation?.Cancel();
+        _preparationCancellation?.Dispose();
+        _preparationCancellation = null;
         if (_hotkeys is not null)
         {
             _hotkeys.HotkeyPressed -= Hotkeys_HotkeyPressed;
@@ -110,7 +114,7 @@ public sealed partial class MainPage : Page, IDisposable
 
     private void Page_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        UpdateResponsiveLayout(e.NewSize.Width);
+        UpdateResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
     }
 
     private void Page_DragOver(object sender, DragEventArgs e)
@@ -157,6 +161,123 @@ public sealed partial class MainPage : Page, IDisposable
         {
             await LoadImageAsync(file.Path);
         }
+    }
+
+    private async void ShowHelp_Click(object sender, RoutedEventArgs e)
+    {
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(CreateHelpStep("1. 이미지 선택", "PNG, JPG, WEBP 또는 BMP 파일을 고릅니다."));
+        content.Children.Add(CreateHelpStep("2. 이미지 분석", "가로 스캔라인이 일반 사진에 가장 빠른 기본값입니다. 픽셀 점찍기는 더 정확하지만 오래 걸립니다."));
+        content.Children.Add(CreateHelpStep("3. Podiums 연결", "처음 한 번만 Roblox 화면에서 안내되는 8개 위치를 차례로 가리키고 F6을 누릅니다."));
+        content.Children.Add(CreateHelpStep("4. 그리기 시작", "버튼을 누른 뒤 15초 안에 Roblox로 전환합니다. F7은 일시정지, F8은 즉시 중지입니다."));
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "GameDraw 사용법",
+            Content = content,
+            CloseButtonText = "확인",
+            DefaultButton = ContentDialogButton.Close
+        };
+        await dialog.ShowAsync();
+    }
+
+    private static StackPanel CreateHelpStep(string title, string description)
+    {
+        var panel = new StackPanel { Spacing = 2 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = description,
+            TextWrapping = TextWrapping.Wrap
+        });
+        return panel;
+    }
+
+    private async void ImportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                ViewMode = PickerViewMode.List
+            };
+            picker.FileTypeFilter.Add(".gamedrawprofile");
+            picker.FileTypeFilter.Add(".json");
+            InitializeWithWindow.Initialize(picker, App.WindowHandle);
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            ViewModel.BeginLoading("프로필을 가져오는 중…");
+            var profile = await App.DrawingSession.ImportProfileAsync(file.Path);
+            _preparedDrawing = null;
+            ViewModel.SetProfileState(profile.Name, profile.Canvas.IsCalibrated);
+            if (profile.Canvas.IsCalibrated)
+            {
+                ViewModel.LogicalWidth = profile.Canvas.LogicalWidth;
+                ViewModel.LogicalHeight = profile.Canvas.LogicalHeight;
+            }
+
+            ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
+            ViewModel.StatusMessage = $"'{profile.Name}' 프로필을 가져왔습니다. 이미지가 있다면 다시 분석하세요.";
+        }
+        catch (Exception exception)
+        {
+            ViewModel.Stage = WorkspaceStage.Failed;
+            ViewModel.StatusMessage = $"프로필을 가져오지 못했습니다: {exception.Message}";
+        }
+        finally
+        {
+            ViewModel.EndLoading();
+        }
+    }
+
+    private async void ExportProfile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = "GameDraw-Podiums",
+                DefaultFileExtension = ".gamedrawprofile"
+            };
+            picker.FileTypeChoices.Add("GameDraw 프로필", new List<string> { ".gamedrawprofile" });
+            InitializeWithWindow.Initialize(picker, App.WindowHandle);
+            var file = await picker.PickSaveFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            ViewModel.BeginLoading("프로필을 내보내는 중…");
+            await App.DrawingSession.ExportCurrentProfileAsync(file.Path);
+            ViewModel.StatusMessage = $"프로필을 '{file.Name}' 파일로 내보냈습니다.";
+        }
+        catch (Exception exception)
+        {
+            ViewModel.Stage = WorkspaceStage.Failed;
+            ViewModel.StatusMessage = $"프로필을 내보내지 못했습니다: {exception.Message}";
+        }
+        finally
+        {
+            ViewModel.EndLoading();
+        }
+    }
+
+    private void CancelWork_Click(object sender, RoutedEventArgs e)
+    {
+        _preparationCancellation?.Cancel();
+        _executionCancellation?.Cancel();
+        App.DrawingSession.Stop();
+        ViewModel.BusyMessage = "작업을 취소하는 중…";
     }
 
     private async Task LoadImageAsync(string path)
@@ -261,6 +382,10 @@ public sealed partial class MainPage : Page, IDisposable
             return false;
         }
 
+        _preparationCancellation?.Cancel();
+        _preparationCancellation?.Dispose();
+        var preparationCancellation = new CancellationTokenSource();
+        _preparationCancellation = preparationCancellation;
         ViewModel.BeginLoading("그림을 분석하는 중…");
         try
         {
@@ -273,12 +398,20 @@ public sealed partial class MainPage : Page, IDisposable
                 ViewModel.SelectedImagePath,
                 SelectedDrawingMode(),
                 SafeWholeNumber(ViewModel.MaximumColors, 128, 2, 256),
-                status);
+                status,
+                preparationCancellation.Token);
             ShowProcessedPreview(_preparedDrawing.Image.Quantized.Rendered);
             ViewModel.PlanSummary = _preparedDrawing.Summary;
             ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = $"분석이 완료되었습니다. {_preparedDrawing.Summary}";
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _preparedDrawing = null;
+            ViewModel.Stage = ViewModel.HasImage ? WorkspaceStage.Configure : WorkspaceStage.SelectImage;
+            ViewModel.StatusMessage = "이미지 분석을 취소했습니다.";
+            return false;
         }
         catch (Exception exception)
         {
@@ -289,7 +422,12 @@ public sealed partial class MainPage : Page, IDisposable
         }
         finally
         {
-            ViewModel.EndLoading();
+            if (ReferenceEquals(_preparationCancellation, preparationCancellation))
+            {
+                _preparationCancellation.Dispose();
+                _preparationCancellation = null;
+                ViewModel.EndLoading();
+            }
         }
     }
 
@@ -373,7 +511,10 @@ public sealed partial class MainPage : Page, IDisposable
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainPageViewModel.SelectedMode) or nameof(MainPageViewModel.MaximumColors))
+        if (e.PropertyName is nameof(MainPageViewModel.SelectedMode)
+            or nameof(MainPageViewModel.MaximumColors)
+            or nameof(MainPageViewModel.LogicalWidth)
+            or nameof(MainPageViewModel.LogicalHeight))
         {
             _preparedDrawing = null;
             ViewModel.PlanSummary = "설정이 변경되었습니다. 이미지를 다시 분석하세요.";
@@ -398,42 +539,46 @@ public sealed partial class MainPage : Page, IDisposable
 
     }
 
-    private void UpdateResponsiveLayout(double width)
+    private void UpdateResponsiveLayout(double width, double height)
     {
-        if (width <= 0)
+        if (width <= 0 || height <= 0)
         {
             return;
         }
 
         ViewModel.SetLayoutWidth(width);
         var mode = ViewModel.LayoutMode;
-        var compact = mode == ResponsiveLayoutMode.Compact;
-        WorkspaceLayout.ColumnDefinitions[0].Width = mode switch
-        {
-            ResponsiveLayoutMode.Expanded => new GridLength(2, GridUnitType.Star),
-            ResponsiveLayoutMode.Medium => new GridLength(1.35, GridUnitType.Star),
-            _ => new GridLength(1, GridUnitType.Star)
-        };
-        WorkspaceLayout.ColumnDefinitions[1].Width = compact
-            ? new GridLength(0)
-            : new GridLength(1, GridUnitType.Star);
-        WorkspaceLayout.RowDefinitions[0].Height = compact
-            ? GridLength.Auto
-            : new GridLength(1, GridUnitType.Star);
-        WorkspaceLayout.RowDefinitions[1].Height = compact
-            ? GridLength.Auto
+        var showStepRail = width >= 1180;
+        var shortHeight = height < 760;
+        StepRail.Visibility = showStepRail ? Visibility.Visible : Visibility.Collapsed;
+        WorkspaceLayout.ColumnDefinitions[0].Width = showStepRail
+            ? new GridLength(mode == ResponsiveLayoutMode.Expanded ? 230 : 205)
             : new GridLength(0);
+        WorkspaceLayout.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+        WorkspaceLayout.ColumnDefinitions[2].Width = new GridLength(width switch
+        {
+            >= 1350 => 370,
+            >= 980 => 350,
+            _ => 310
+        });
         RootLayout.Padding = mode switch
         {
-            ResponsiveLayoutMode.Expanded => new Thickness(32, 28, 32, 36),
-            ResponsiveLayoutMode.Medium => new Thickness(24, 22, 24, 28),
-            _ => new Thickness(16, 18, 16, 24)
+            ResponsiveLayoutMode.Expanded => new Thickness(24, 18, 24, 22),
+            ResponsiveLayoutMode.Medium => new Thickness(18, 14, 18, 18),
+            _ => new Thickness(12)
         };
-
-        Grid.SetColumn(ControlPanel, compact ? 0 : 1);
-        Grid.SetRow(ControlPanel, compact ? 1 : 0);
-        ExecutionOverlay.Margin = compact ? new Thickness(12) : new Thickness(24);
-        PreviewBadge.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        RootLayout.RowSpacing = shortHeight ? 8 : 12;
+        WorkspaceLayout.ColumnSpacing = shortHeight ? 8 : 12;
+        PreviewCard.Padding = shortHeight ? new Thickness(12) : new Thickness(18);
+        HeaderSubtitle.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        StepRailHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        SafetyHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        PreviewDescription.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        FileHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        CalibrationHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        ModeDescriptionText.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        PreviewBadge.Visibility = width < 900 ? Visibility.Collapsed : Visibility.Visible;
+        ExecutionOverlay.Margin = mode == ResponsiveLayoutMode.Compact ? new Thickness(10) : new Thickness(18);
     }
 
     private void ApplyTheme(AppThemeMode mode)

@@ -44,6 +44,8 @@ Connect image processing, planning, profile persistence, Podiums controls, Windo
 
 Add profile import/export, capability-based adapters, migration, and a second drawing game without changing the core planner or executor.
 
+Implemented with a versioned portable profile service, schema migration, reusable HEX input adapter, capability catalog, and Generic HEX Whiteboard reference adapter. The same pass also replaced the vertically stacked shell with a height-aware desktop workspace and removed large-image analysis hangs.
+
 ## Phase 9 — production hardening
 
 Run image-quality, DPI, multi-monitor, long-run, cancellation, packaging, and regression tests. Publish a signed or documented self-contained build.

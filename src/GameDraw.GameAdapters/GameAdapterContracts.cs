@@ -15,7 +15,9 @@ public enum GameAdapterCapabilities
     ColorSelection = 1 << 1,
     BrushSelection = 1 << 2,
     FillTool = 1 << 3,
-    VisualVerification = 1 << 4
+    VisualVerification = 1 << 4,
+    PortableProfiles = 1 << 5,
+    CustomWindowTarget = 1 << 6
 }
 
 public sealed record AdapterActionResult(bool Succeeded, string? Message = null);
@@ -90,4 +92,7 @@ public interface IGameAdapter
 public interface IGameAdapterCatalog
 {
     IReadOnlyList<IGameAdapter> Adapters { get; }
+
+    IGameAdapter? Find(string id)
+        => Adapters.FirstOrDefault(adapter => string.Equals(adapter.Id, id, StringComparison.OrdinalIgnoreCase));
 }

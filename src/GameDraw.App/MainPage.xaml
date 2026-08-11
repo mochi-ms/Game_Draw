@@ -23,36 +23,32 @@
     </Page.KeyboardAccelerators>
 
     <Grid x:Name="PageRoot">
-        <ScrollViewer
-        HorizontalScrollBarVisibility="Disabled"
-        VerticalScrollBarVisibility="Auto">
         <Grid
             x:Name="RootLayout"
-            MaxWidth="1440"
-            Padding="32,28,32,36"
-            HorizontalAlignment="Center"
-            RowSpacing="18">
+            MaxWidth="1680"
+            Padding="24,18,24,22"
+            HorizontalAlignment="Stretch"
+            RowSpacing="12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="4">
+                <StackPanel VerticalAlignment="Center" Spacing="1">
                     <TextBlock
                         Text="GameDraw"
-                        FontSize="30"
+                        FontSize="27"
                         FontWeight="SemiBold"
                         Foreground="{ThemeResource StrongTextBrush}" />
                     <TextBlock
-                        Text="이미지를 게임 캔버스용 입력 동작으로 바꾸는 작업 공간"
-                        TextWrapping="Wrap"
-                        MaxLines="2"
+                        x:Name="HeaderSubtitle"
+                        Text="이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요."
                         Style="{ThemeResource MutedTextBlockStyle}" />
                 </StackPanel>
                 <StackPanel
@@ -61,48 +57,107 @@
                     Spacing="8"
                     VerticalAlignment="Center">
                     <Button
+                        Click="ShowHelp_Click"
+                        Content="사용법"
+                        Padding="14,8"
+                        AutomationProperties.Name="사용법 보기" />
+                    <Button
+                        x:Name="AdvancedSettingsButton"
+                        Content="고급 설정"
+                        Padding="14,8">
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Width="340" Spacing="14">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="고급 설정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                                        <TextBlock
+                                            Text="대부분은 기본값 그대로 사용해도 됩니다."
+                                            Style="{ThemeResource MutedTextBlockStyle}" />
+                                    </StackPanel>
+                                    <TextBox
+                                        Header="프로필 이름"
+                                        PlaceholderText="예: Podiums 화이트보드"
+                                        Text="{x:Bind ViewModel.ProfileName, Mode=TwoWay}" />
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <NumberBox
+                                            Header="처리 폭"
+                                            Minimum="1"
+                                            Maximum="4096"
+                                            SpinButtonPlacementMode="Compact"
+                                            Value="{x:Bind ViewModel.LogicalWidth, Mode=TwoWay}" />
+                                        <NumberBox
+                                            Grid.Column="1"
+                                            Header="처리 높이"
+                                            Minimum="1"
+                                            Maximum="4096"
+                                            SpinButtonPlacementMode="Compact"
+                                            Value="{x:Bind ViewModel.LogicalHeight, Mode=TwoWay}" />
+                                    </Grid>
+                                    <ToggleSwitch
+                                        Header="모션 줄이기"
+                                        IsOn="{x:Bind ViewModel.IsReducedMotion, Mode=TwoWay}" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button
+                                            Click="ImportProfile_Click"
+                                            Content="프로필 가져오기"
+                                            HorizontalAlignment="Stretch" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Click="ExportProfile_Click"
+                                            Content="프로필 내보내기"
+                                            HorizontalAlignment="Stretch" />
+                                    </Grid>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button
                         x:Name="ThemeButton"
                         Command="{x:Bind ViewModel.ToggleThemeCommand}"
                         Content="☼"
                         Padding="12,8"
                         AutomationProperties.Name="테마 변경"
                         ToolTipService.ToolTip="{x:Bind ViewModel.ThemeLabel, Mode=OneWay}" />
-                    <Button
-                        Command="{x:Bind ViewModel.ToggleExecutionPanelCommand}"
-                        Content="실행 패널"
-                        Padding="14,8"
-                        AutomationProperties.Name="실행 패널 표시" />
                 </StackPanel>
             </Grid>
 
             <Border
                 Grid.Row="1"
                 Background="{ThemeResource PrimarySoftBrush}"
-                CornerRadius="16"
-                Padding="18,13">
-                <Grid>
+                CornerRadius="14"
+                Padding="16,10">
+                <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
-                        <TextBlock
-                            Text="현재 작업"
-                            FontSize="12"
-                            Foreground="{ThemeResource MutedTextBrush}" />
-                        <TextBlock
-                            Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                            FontSize="14"
-                            FontWeight="SemiBold"
-                            Foreground="{ThemeResource StrongTextBrush}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Border
+                    <FontIcon
+                        Glyph="&#xE946;"
+                        FontSize="16"
+                        Foreground="{ThemeResource PrimaryBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBlock
                         Grid.Column="1"
+                        Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource StrongTextBrush}"
+                        TextTrimming="CharacterEllipsis"
+                        VerticalAlignment="Center" />
+                    <Border
+                        Grid.Column="2"
                         Background="{ThemeResource CardBackgroundBrush}"
-                        CornerRadius="12"
-                        Padding="14,8"
-                        VerticalAlignment="Center">
+                        CornerRadius="10"
+                        Padding="12,6">
                         <TextBlock
                             Text="{x:Bind ViewModel.StageLabel, Mode=OneWay}"
                             FontWeight="SemiBold"
@@ -114,23 +169,79 @@
             <Grid
                 x:Name="WorkspaceLayout"
                 Grid.Row="2"
-                ColumnSpacing="18"
-                RowSpacing="18">
+                MinHeight="0"
+                ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*" />
-                    <ColumnDefinition Width="1*" />
+                    <ColumnDefinition Width="230" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="360" />
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="0" />
-                </Grid.RowDefinitions>
+
+                <Border
+                    x:Name="StepRail"
+                    Grid.Column="0"
+                    Style="{ThemeResource CardBorderStyle}"
+                    Padding="18">
+                    <Grid RowSpacing="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="빠른 사용 순서" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                            <TextBlock
+                                x:Name="StepRailHint"
+                                Text="위에서 아래로 한 번씩 진행하면 됩니다."
+                                TextWrapping="Wrap"
+                                Style="{ThemeResource MutedTextBlockStyle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="10">
+                            <Border Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,10">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="1  이미지 선택" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                                    <TextBlock Text="그릴 사진을 불러옵니다" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="2  이미지 분석" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                                    <TextBlock Text="색상과 경로를 계산합니다" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="3  게임 연결" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                                    <TextBlock Text="처음 한 번만 F6 보정" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="4  그리기 시작" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                                    <TextBlock Text="F7 일시정지 · F8 중지" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <Border
+                            x:Name="SafetyHint"
+                            Grid.Row="2"
+                            Background="{ThemeResource DangerSoftBrush}"
+                            CornerRadius="12"
+                            Padding="12,10">
+                            <TextBlock
+                                Text="문제가 생기면 언제든 F8을 누르세요. 마우스를 즉시 놓고 중지합니다."
+                                TextWrapping="Wrap"
+                                Style="{ThemeResource MutedTextBlockStyle}" />
+                        </Border>
+                    </Grid>
+                </Border>
 
                 <Border
                     x:Name="PreviewCard"
-                    Grid.Row="0"
-                    Grid.Column="0"
-                    Style="{ThemeResource CardBorderStyle}">
-                    <Grid RowSpacing="16">
+                    Grid.Column="1"
+                    Style="{ThemeResource CardBorderStyle}"
+                    Padding="18">
+                    <Grid RowSpacing="12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -141,23 +252,22 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="3">
-                                <TextBlock Text="이미지 미리보기" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="그림 미리보기" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                 <TextBlock
-                                    Text="원본 비율을 유지한 채 작업 영역에 표시합니다."
-                                    TextWrapping="Wrap"
+                                    x:Name="PreviewDescription"
+                                    Text="분석 후 실제로 그릴 색상 결과를 바로 확인할 수 있습니다."
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                             </StackPanel>
                             <Border
                                 x:Name="PreviewBadge"
                                 Grid.Column="1"
-                                HorizontalAlignment="Right"
                                 Background="{ThemeResource PreviewSurfaceBrush}"
                                 CornerRadius="10"
                                 Padding="10,6">
                                 <TextBlock
                                     x:Name="PreviewBadgeLabel"
-                                    Text="원본 미리보기"
+                                    Text="원본"
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>
                         </Grid>
@@ -165,31 +275,31 @@
                         <Border
                             x:Name="PreviewSurface"
                             Grid.Row="1"
+                            MinHeight="0"
                             Background="{ThemeResource PreviewSurfaceBrush}"
                             BorderBrush="{ThemeResource CardBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="16"
-                            MinHeight="360"
-                            Padding="24">
+                            CornerRadius="14"
+                            Padding="16">
                             <Grid>
                                 <StackPanel
                                     x:Name="EmptyState"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    Spacing="10">
+                                    Spacing="8">
                                     <FontIcon
                                         Glyph="&#xE8B9;"
-                                        FontSize="42"
+                                        FontSize="38"
                                         HorizontalAlignment="Center"
                                         Foreground="{ThemeResource PrimaryBrush}" />
                                     <TextBlock
-                                        Text="이미지를 여기에 놓거나 파일을 선택하세요"
-                                        FontSize="16"
+                                        Text="이미지를 놓거나 아래 버튼으로 선택하세요"
+                                        FontSize="15"
                                         FontWeight="SemiBold"
                                         HorizontalAlignment="Center"
                                         Foreground="{ThemeResource StrongTextBrush}" />
                                     <TextBlock
-                                        Text="PNG, JPG, JPEG, WEBP, BMP"
+                                        Text="PNG · JPG · WEBP · BMP"
                                         HorizontalAlignment="Center"
                                         Style="{ThemeResource MutedTextBlockStyle}" />
                                 </StackPanel>
@@ -197,13 +307,12 @@
                                     x:Name="PreviewImage"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
-                                    MaxHeight="560"
                                     Stretch="Uniform"
                                     Visibility="Collapsed" />
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="2" ColumnSpacing="12">
+                        <Grid Grid.Row="2" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -212,203 +321,166 @@
                             <Button
                                 x:Name="SelectImageButton"
                                 Click="SelectImage_Click"
-                                Content="이미지 선택"
+                                Content="1  이미지 선택"
                                 IsEnabled="{x:Bind ViewModel.CanChangeImage, Mode=OneWay}"
-                                Padding="18,10"
-                                AutomationProperties.Name="이미지 파일 선택"
-                                AutomationProperties.HelpText="그릴 이미지 파일을 선택합니다." />
-                            <StackPanel Grid.Column="1" Margin="4,0,0,0" Spacing="2" VerticalAlignment="Center">
+                                Padding="16,9" />
+                            <StackPanel Grid.Column="1" Margin="2,0" VerticalAlignment="Center" Spacing="1">
                                 <TextBlock
                                     Text="{x:Bind ViewModel.SelectedImageName, Mode=OneWay}"
                                     FontWeight="SemiBold"
                                     Foreground="{ThemeResource StrongTextBrush}"
                                     TextTrimming="CharacterEllipsis" />
                                 <TextBlock
-                                    Text="드래그 앤 드롭도 지원합니다"
+                                    x:Name="FileHint"
+                                    Text="드래그 앤 드롭 가능"
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                             </StackPanel>
                             <Button
                                 Grid.Column="2"
                                 Command="{x:Bind ViewModel.ClearImageCommand}"
-                                Content="초기화"
+                                Content="지우기"
                                 IsEnabled="{x:Bind ViewModel.CanClearImage, Mode=OneWay}"
-                                Padding="16,10" />
+                                Padding="12,9" />
                         </Grid>
                     </Grid>
                 </Border>
 
-                <StackPanel
+                <Grid
                     x:Name="ControlPanel"
-                    Grid.Row="0"
-                    Grid.Column="1"
-                    Spacing="18">
-                    <Border Style="{ThemeResource CardBorderStyle}">
-                        <StackPanel Spacing="14">
-                            <StackPanel Spacing="3">
-                                <TextBlock Text="프로필" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                                <TextBlock
-                                    Text="게임 창과 캔버스 정보를 저장하는 단위입니다."
-                                    Style="{ThemeResource MutedTextBlockStyle}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                            <TextBox
-                                Header="프로필 이름"
-                                PlaceholderText="예: Podiums 화이트보드"
-                                Text="{x:Bind ViewModel.ProfileName, Mode=TwoWay}"
-                                AutomationProperties.Name="프로필 이름" />
-                            <TextBlock
-                                Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
-                                FontWeight="SemiBold"
-                                Foreground="{ThemeResource PrimaryBrush}" />
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <NumberBox
-                                    Header="논리 폭"
-                                    Minimum="1"
-                                    Maximum="4096"
-                                    SpinButtonPlacementMode="Compact"
-                                    Value="{x:Bind ViewModel.LogicalWidth, Mode=TwoWay}" />
-                                <NumberBox
-                                    Grid.Column="1"
-                                    Header="논리 높이"
-                                    Minimum="1"
-                                    Maximum="4096"
-                                    SpinButtonPlacementMode="Compact"
-                                    Value="{x:Bind ViewModel.LogicalHeight, Mode=TwoWay}" />
-                            </Grid>
-                            <Button
-                                Click="ProfileSetup_Click"
-                                Content="Podiums 캘리브레이션"
-                                HorizontalAlignment="Stretch" />
-                            <TextBlock
-                                Text="캔버스와 연필·지우개·채우기·굵기 슬라이더·HEX 입력 위치를 F6으로 기록합니다."
-                                Style="{ThemeResource MutedTextBlockStyle}"
-                                TextWrapping="Wrap" />
-                            <Border
-                                Padding="14"
-                                Background="{ThemeResource PrimarySoftBrush}"
-                                CornerRadius="14"
-                                Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <StackPanel Spacing="10">
+                    Grid.Column="2"
+                    RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <StackPanel Spacing="1">
+                                    <TextBlock Text="3  Podiums 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                     <TextBlock
-                                        Text="캘리브레이션 진행 중"
-                                        FontWeight="SemiBold"
-                                        Foreground="{ThemeResource PrimaryBrush}" />
+                                        Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
+                                        Foreground="{ThemeResource PrimaryBrush}"
+                                        FontWeight="SemiBold" />
+                                </StackPanel>
+                                <Button
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="ProfileSetup_Click"
+                                    Content="연결 설정"
+                                    Padding="14,8" />
+                            </Grid>
+                            <TextBlock
+                                x:Name="CalibrationHint"
+                                Text="처음 한 번만: Roblox에서 안내 위치에 마우스를 놓고 F6을 누릅니다."
+                                TextWrapping="Wrap"
+                                Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Border
+                                Padding="12"
+                                Background="{ThemeResource PrimarySoftBrush}"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
                                     <TextBlock
                                         Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}"
                                         TextWrapping="Wrap"
                                         Foreground="{ThemeResource StrongTextBrush}" />
-                                    <Button
-                                        Click="CancelCalibration_Click"
-                                        Content="캘리브레이션 취소"
-                                        HorizontalAlignment="Stretch" />
-                                </StackPanel>
+                                    <Button Grid.Column="1" Click="CancelCalibration_Click" Content="취소" />
+                                </Grid>
                             </Border>
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{ThemeResource CardBorderStyle}">
-                        <StackPanel Spacing="14">
-                            <StackPanel Spacing="3">
-                                <TextBlock Text="그리기 모드" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                                <TextBlock
-                                    Text="원본을 변환할 방식을 선택합니다."
-                                    Style="{ThemeResource MutedTextBlockStyle}" />
-                            </StackPanel>
-                            <ComboBox
-                                x:Name="SelectedModeComboBox"
-                                Header="모드"
-                                SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}"
-                                AutomationProperties.Name="그리기 모드">
-                                <x:String>자동 추천</x:String>
-                                <x:String>픽셀 점찍기</x:String>
-                                <x:String>가로 스캔라인</x:String>
-                                <x:String>세로 스캔라인</x:String>
-                                <x:String>윤곽선</x:String>
-                                <x:String>면 채우기</x:String>
-                                <x:String>하이브리드</x:String>
-                            </ComboBox>
+                    <Border Grid.Row="0" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="2  분석 설정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1.35*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox
+                                    x:Name="SelectedModeComboBox"
+                                    Header="그리는 방법"
+                                    SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}"
+                                    HorizontalAlignment="Stretch">
+                                    <x:String>자동 추천</x:String>
+                                    <x:String>픽셀 점찍기</x:String>
+                                    <x:String>가로 스캔라인</x:String>
+                                    <x:String>세로 스캔라인</x:String>
+                                    <x:String>윤곽선</x:String>
+                                    <x:String>면 채우기</x:String>
+                                    <x:String>하이브리드</x:String>
+                                </ComboBox>
+                                <NumberBox
+                                    Grid.Column="1"
+                                    Header="최대 색상"
+                                    Minimum="2"
+                                    Maximum="256"
+                                    SmallChange="8"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
+                            </Grid>
                             <TextBlock
-                                Text="픽셀 점찍기와 선 기반 모드는 같은 DrawingPlan 계약으로 연결됩니다."
-                                Style="{ThemeResource MutedTextBlockStyle}"
-                                TextWrapping="Wrap" />
-                            <NumberBox
-                                Header="최대 색상 수"
-                                Minimum="2"
-                                Maximum="256"
-                                SmallChange="8"
-                                SpinButtonPlacementMode="Compact"
-                                Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}"
-                                AutomationProperties.Name="최대 색상 수" />
-                            <TextBlock
-                                Text="128색과 디더링이 기본이며 필요하면 256색까지 선택할 수 있습니다."
-                                Style="{ThemeResource MutedTextBlockStyle}"
-                                TextWrapping="Wrap" />
+                                x:Name="ModeDescriptionText"
+                                Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}"
+                                TextWrapping="Wrap"
+                                Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Button
+                                Click="PrepareDrawing_Click"
+                                Content="2  이미지 분석"
+                                IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}"
+                                HorizontalAlignment="Stretch"
+                                Padding="16,10" />
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{ThemeResource CardBorderStyle}">
-                        <StackPanel Spacing="14">
+                    <Border Grid.Row="2" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
+                        <Grid RowSpacing="10">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid>
-                                <TextBlock Text="실행 상태" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                                <TextBlock Text="4  실행" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                 <TextBlock
                                     HorizontalAlignment="Right"
-                                    Text="{x:Bind ViewModel.StageLabel, Mode=OneWay}"
-                                    Style="{ThemeResource MutedTextBlockStyle}" />
+                                    Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}"
+                                    Foreground="{ThemeResource PrimaryBrush}"
+                                    FontWeight="SemiBold" />
                             </Grid>
                             <ProgressBar
                                 x:Name="ProgressBar"
+                                Grid.Row="1"
                                 Maximum="1"
-                                Value="{x:Bind ViewModel.Progress, Mode=OneWay}"
-                                AutomationProperties.Name="실행 진행률" />
+                                Value="{x:Bind ViewModel.Progress, Mode=OneWay}" />
                             <TextBlock
-                                HorizontalAlignment="Right"
-                                Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}"
-                                Style="{ThemeResource MutedTextBlockStyle}" />
-                            <TextBlock
+                                Grid.Row="2"
                                 Text="{x:Bind ViewModel.PlanSummary, Mode=OneWay}"
-                                Style="{ThemeResource MutedTextBlockStyle}"
-                                TextWrapping="Wrap" />
+                                TextWrapping="Wrap"
+                                VerticalAlignment="Center"
+                                Style="{ThemeResource MutedTextBlockStyle}" />
                             <Button
-                                Click="PrepareDrawing_Click"
-                                Content="이미지 분석"
-                                IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="이미지 분석" />
-                            <Button
+                                Grid.Row="3"
                                 Click="StartDrawing_Click"
-                                Content="Podiums에 그리기 시작"
+                                Content="4  Podiums에 그리기 시작"
                                 IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
                                 HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="Podiums 자동 그리기 시작" />
-                            <Button
-                                Command="{x:Bind ViewModel.ToggleExecutionPanelCommand}"
-                                Content="실행 패널 열기"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="실행 패널 열기" />
-                        </StackPanel>
+                                Padding="16,12"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
                     </Border>
-
-                    <Border Style="{ThemeResource CardBorderStyle}">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="접근성 및 표시" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                            <ToggleSwitch
-                                Header="모션 줄이기"
-                                IsOn="{x:Bind ViewModel.IsReducedMotion, Mode=TwoWay}"
-                                AutomationProperties.Name="모션 줄이기" />
-                            <TextBlock
-                                Text="실행 중에는 Roblox 위에 별도의 상태 창이 표시되며 F7/F8로 제어합니다."
-                                Style="{ThemeResource MutedTextBlockStyle}"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                </Grid>
             </Grid>
         </Grid>
-        </ScrollViewer>
 
         <Grid
             x:Name="BusyOverlay"
@@ -416,23 +488,33 @@
             Background="{ThemeResource OverlayBrush}"
             Visibility="{x:Bind ViewModel.IsBusy, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <Border
-                Padding="28"
+                Padding="26"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Background="{ThemeResource CardBackgroundBrush}"
                 BorderBrush="{ThemeResource CardBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="20">
-                <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <StackPanel Width="300" HorizontalAlignment="Center" Spacing="12">
                     <ProgressRing
                         IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}"
                         Width="36"
-                        Height="36"
-                        AutomationProperties.Name="로딩 중" />
+                        Height="36" />
                     <TextBlock
                         Text="{x:Bind ViewModel.BusyMessage, Mode=OneWay}"
                         HorizontalAlignment="Center"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        Foreground="{ThemeResource StrongTextBrush}" />
+                    <TextBlock
+                        Text="분석은 백그라운드에서 실행되며 앱은 계속 반응합니다."
+                        HorizontalAlignment="Center"
+                        TextAlignment="Center"
                         Style="{ThemeResource MutedTextBlockStyle}" />
+                    <Button
+                        Click="CancelWork_Click"
+                        Content="작업 취소"
+                        HorizontalAlignment="Stretch" />
                 </StackPanel>
             </Border>
         </Grid>
@@ -440,50 +522,30 @@
         <Border
             x:Name="ExecutionOverlay"
             Canvas.ZIndex="10"
-            Margin="24"
-            Padding="18"
+            Margin="18"
+            Padding="16"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             MaxWidth="360"
             Background="{ThemeResource CardBackgroundBrush}"
             BorderBrush="{ThemeResource PrimaryBrush}"
             BorderThickness="1"
-            CornerRadius="18"
+            CornerRadius="16"
             Visibility="{x:Bind ViewModel.IsExecutionPanelVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-            <StackPanel Spacing="12">
+            <StackPanel Spacing="10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="실행 패널" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                        <TextBlock
-                            Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                            Style="{ThemeResource MutedTextBlockStyle}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                    <TextBlock
-                        Grid.Column="1"
-                        HorizontalAlignment="Right"
-                        Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}"
-                        Style="{ThemeResource MutedTextBlockStyle}" />
+                    <TextBlock Text="실행 중 · F7 일시정지 · F8 중지" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                    <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}" Foreground="{ThemeResource PrimaryBrush}" />
                 </Grid>
-                <ProgressBar
-                    Maximum="1"
-                    Value="{x:Bind ViewModel.Progress, Mode=OneWay}"
-                    AutomationProperties.Name="실행 패널 진행률" />
+                <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                <ProgressBar Maximum="1" Value="{x:Bind ViewModel.Progress, Mode=OneWay}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        Click="PauseResume_Click"
-                        Content="일시 정지/재개"
-                        IsEnabled="{x:Bind ViewModel.CanPause, Mode=OneWay}"
-                        AutomationProperties.Name="실행 일시 정지 또는 재개" />
-                    <Button
-                        Click="StopDrawing_Click"
-                        Content="중지"
-                        IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}"
-                        AutomationProperties.Name="실행 중지" />
+                    <Button Click="PauseResume_Click" Content="일시 정지 / 재개" IsEnabled="{x:Bind ViewModel.CanPause, Mode=OneWay}" />
+                    <Button Click="StopDrawing_Click" Content="즉시 중지" IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}" />
                 </StackPanel>
             </StackPanel>
         </Border>

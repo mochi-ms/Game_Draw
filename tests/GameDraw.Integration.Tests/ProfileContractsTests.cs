@@ -82,4 +82,42 @@ public sealed class ProfileContractsTests
         Assert.Contains(result.Errors, error => error.Contains("confidence", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(result.Errors, error => error.Contains("consecutive", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public async Task PortableProfileRoundTripsWithFreshIdentity()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gamedraw-transfer-test-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "podiums.gamedrawprofile");
+        try
+        {
+            var service = new ProfileTransferService();
+            var source = GameProfile.CreateDefault("공유 프로필", "Podiums");
+
+            await service.ExportAsync(source, path);
+            var imported = await service.ImportAsync(path);
+
+            Assert.Equal(source.Name, imported.Name);
+            Assert.Equal(source.GameName, imported.GameName);
+            Assert.NotEqual(source.Id, imported.Id);
+            Assert.True(imported.Validate().IsValid);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void MigrationUpgradesLegacyDraftAndRejectsFutureSchema()
+    {
+        var legacy = GameProfile.CreateDefault() with { SchemaVersion = 0 };
+        var migrated = GameProfileMigration.ToCurrent(legacy);
+
+        Assert.Equal(GameProfileMigration.CurrentSchemaVersion, migrated.SchemaVersion);
+        Assert.Throws<InvalidDataException>(() =>
+            GameProfileMigration.ToCurrent(legacy with { SchemaVersion = 99 }));
+    }
 }

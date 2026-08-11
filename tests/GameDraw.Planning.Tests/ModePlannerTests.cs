@@ -114,6 +114,30 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void AutomaticModeHandlesDenseMediumImageWithoutContourSearchExplosion()
+    {
+        const int size = 128;
+        var pixels = Enumerable.Range(0, size * size)
+            .Select(index => ((index % size) + (index / size)) % 2 == 0
+                ? RgbColor.Black
+                : RgbColor.White)
+            .ToArray();
+        var image = Quantize(pixels, size, size);
+
+        var result = new DrawingPlanner().Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.Auto
+        });
+
+        Assert.NotEqual(DrawingMode.Auto, result.SelectedMode);
+        Assert.Equal(6, result.Candidates.Count);
+        Assert.Same(result.Plan, result.Candidates.Single(candidate => candidate.Mode == result.SelectedMode).Plan);
+        Assert.All(
+            result.Candidates.Where(candidate => candidate.Mode != result.SelectedMode),
+            candidate => Assert.Empty(candidate.Plan.ColorGroups));
+    }
+
+    [Fact]
     public void PlannerSkipsTransparentPixelsByDefault()
     {
         var frame = new ImageFrame(2, 2, new[]

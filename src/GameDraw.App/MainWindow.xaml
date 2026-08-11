@@ -20,7 +20,7 @@
 
         <TitleBar x:Name="AppTitleBar" Title="GameDraw">
             <TitleBar.IconSource>
-                <ImageIconSource ImageSource="Assets/AppIcon.ico" />
+                <FontIconSource Glyph="&#xE8B9;" />
             </TitleBar.IconSource>
         </TitleBar>
 

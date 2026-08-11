@@ -26,7 +26,7 @@ public partial class MainPageViewModel : ObservableObject
     public partial string? SelectedImagePath { get; set; }
 
     [ObservableProperty]
-    public partial string SelectedMode { get; set; } = "자동 추천";
+    public partial string SelectedMode { get; set; } = "가로 스캔라인";
 
     [ObservableProperty]
     public partial string ProfileName { get; set; } = "새 게임 프로필";
@@ -88,13 +88,24 @@ public partial class MainPageViewModel : ObservableObject
         Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
 
     public bool CanStart => HasImage && IsProfileCalibrated && !IsBusy && !IsCalibrating &&
-        (Stage is WorkspaceStage.Configure or WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed);
+        Stage is WorkspaceStage.Ready or WorkspaceStage.Completed;
 
     public bool CanPause => Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
 
     public bool CanStop => CanPause;
 
     public bool IsPaused => Stage == WorkspaceStage.Paused;
+
+    public string ModeDescription => SelectedMode switch
+    {
+        "픽셀 점찍기" => "픽셀마다 점을 찍습니다. 가장 정확하지만 실행 시간이 가장 깁니다.",
+        "가로 스캔라인" => "같은 색의 가로 구간을 선으로 묶습니다. 대부분의 이미지에 빠르고 정확합니다.",
+        "세로 스캔라인" => "세로 방향이 긴 그림을 선으로 묶어 그립니다.",
+        "윤곽선" => "색 영역의 테두리만 그립니다. 선화와 로고에 적합합니다.",
+        "면 채우기" => "같은 색 영역을 줄 단위로 채웁니다.",
+        "하이브리드" => "윤곽선과 면 채우기를 함께 사용합니다.",
+        _ => "이미지를 비교해 모드를 고릅니다. 큰 사진은 분석 시간이 더 걸릴 수 있습니다."
+    };
 
     public string ProfileStatusLabel => IsProfileCalibrated
         ? "캘리브레이션 저장됨"
@@ -178,6 +189,11 @@ public partial class MainPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(ProfileStatusLabel));
+    }
+
+    partial void OnSelectedModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(ModeDescription));
     }
 
     public void SetImage(string path)

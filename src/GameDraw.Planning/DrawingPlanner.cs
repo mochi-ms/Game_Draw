@@ -38,20 +38,37 @@ public sealed class DrawingPlanner : IDrawingPlanner
             return new DrawingPlanningResult(plan, estimate, new[] { candidate });
         }
 
-        var candidates = AutomaticModes
-            .Select(mode =>
+        var summaries = new List<ModeCandidate>(AutomaticModes.Length);
+        DrawingPlan? selectedPlan = null;
+        PlanEstimate? selectedEstimate = null;
+        var selectedMode = DrawingMode.Auto;
+        var bestScore = double.PositiveInfinity;
+        foreach (var mode in AutomaticModes)
+        {
+            var plan = CreateForMode(image, mode, options with { Mode = mode });
+            var estimate = Estimate(plan, options);
+            var score = Score(estimate);
+            summaries.Add(new ModeCandidate(
+                mode,
+                DrawingPlan.Empty(mode, plan.LogicalSize),
+                estimate,
+                score,
+                ReasonFor(mode, estimate)));
+            if (score < bestScore || (score.Equals(bestScore) && mode < selectedMode))
             {
-                var plan = CreateForMode(image, mode, options with { Mode = mode });
-                var estimate = Estimate(plan, options);
-                return new ModeCandidate(
-                    mode,
-                    plan,
-                    estimate,
-                    Score(estimate),
-                    ReasonFor(mode, estimate));
-            })
+                bestScore = score;
+                selectedPlan = plan;
+                selectedEstimate = estimate;
+                selectedMode = mode;
+            }
+        }
+
+        var candidates = summaries
             .OrderBy(candidate => candidate.Score)
             .ThenBy(candidate => candidate.Mode)
+            .Select(candidate => candidate.Mode == selectedMode && selectedPlan is not null
+                ? candidate with { Plan = selectedPlan }
+                : candidate)
             .ToArray();
 
         if (candidates.Length == 0)
@@ -61,8 +78,7 @@ public sealed class DrawingPlanner : IDrawingPlanner
             return new DrawingPlanningResult(empty, emptyEstimate, Array.Empty<ModeCandidate>());
         }
 
-        var selected = candidates[0];
-        return new DrawingPlanningResult(selected.Plan, selected.Estimate, candidates);
+        return new DrawingPlanningResult(selectedPlan!, selectedEstimate!, candidates);
     }
 
     public PlanEstimate Estimate(

@@ -49,6 +49,7 @@ public sealed class DrawingSessionController : IDisposable
     private readonly WindowsWindowCapture _capture = new();
     private readonly PodiumsGameAdapter _adapter = new();
     private readonly JsonGameProfileStore _profileStore;
+    private readonly ProfileTransferService _profileTransfer = new();
     private readonly object _executionLock = new();
     private WindowsDrawingExecutor? _activeExecutor;
     private WindowsInputController? _activeInput;
@@ -119,6 +120,30 @@ public sealed class DrawingSessionController : IDisposable
         return profile;
     }
 
+    public Task ExportCurrentProfileAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        return _profileTransfer.ExportAsync(CurrentProfile, path, cancellationToken);
+    }
+
+    public async Task<GameProfile> ImportProfileAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var profile = await _profileTransfer.ImportAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!string.Equals(profile.GameName, "Podiums", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("현재 화면에서는 Podiums 프로필만 가져올 수 있습니다.");
+        }
+
+        await _profileStore.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+        CurrentProfile = profile;
+        return profile;
+    }
+
     public async Task<TargetWindowSnapshot?> FindPodiumsTargetAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -184,36 +209,41 @@ public sealed class DrawingSessionController : IDisposable
                 : new PixelSize(512, 512));
 
         status?.Report("색상과 해상도를 최적화하는 중입니다…");
-        var image = _imaging.ProcessFrame(
-            decoded.Frame,
-            new ImageProcessingOptions
+        var processingOptions = new ImageProcessingOptions
+        {
+            TargetSize = target,
+            Palette = new PaletteBuildOptions
             {
-                TargetSize = target,
-                Palette = new PaletteBuildOptions
-                {
-                    MaxColors = maximumColors,
-                    MaxSamples = 250_000
-                },
-                Quantization = new QuantizationOptions
-                {
-                    DitherMode = DitherMode.OrderedBayer4,
-                    PreserveAlpha = true
-                }
+                MaxColors = maximumColors,
+                MaxSamples = 250_000
             },
-            sourcePath,
-            decoded.FormatName);
+            Quantization = new QuantizationOptions
+            {
+                DitherMode = DitherMode.OrderedBayer4,
+                PreserveAlpha = true
+            }
+        };
+        var image = await Task.Run(
+            () => _imaging.ProcessFrame(
+                decoded.Frame,
+                processingOptions,
+                sourcePath,
+                decoded.FormatName,
+                cancellationToken),
+            cancellationToken).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
         status?.Report("그리기 경로와 예상 시간을 계산하는 중입니다…");
-        var planning = _planner.Plan(
-            image.Quantized,
-            new DrawingPlannerOptions
-            {
-                Mode = mode,
-                MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
-                InterStrokeDelayMilliseconds = CurrentProfile.Timing.InterStrokeDelayMilliseconds,
-                ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds
-            });
+        var plannerOptions = new DrawingPlannerOptions
+        {
+            Mode = mode,
+            MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
+            InterStrokeDelayMilliseconds = CurrentProfile.Timing.InterStrokeDelayMilliseconds,
+            ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds
+        };
+        var planning = await Task.Run(
+            () => _planner.Plan(image.Quantized, plannerOptions),
+            cancellationToken).ConfigureAwait(false);
         return new PreparedDrawing(sourcePath, image, planning, maximumColors);
     }
 

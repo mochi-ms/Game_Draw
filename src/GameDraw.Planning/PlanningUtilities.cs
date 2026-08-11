@@ -136,11 +136,18 @@ internal static class PlanningUtilities
 
 internal static class StrokeOrdering
 {
+    private const int ExactOrderingLimit = 2_048;
+
     public static IReadOnlyList<DrawingStroke> Order(IReadOnlyList<DrawingStroke> strokes)
     {
         if (strokes.Count <= 1)
         {
             return strokes;
+        }
+
+        if (strokes.Count > ExactOrderingLimit)
+        {
+            return OrderLargePlan(strokes);
         }
 
         var remaining = strokes.ToList();
@@ -180,6 +187,34 @@ internal static class StrokeOrdering
 
             ordered.Add(selected);
             current = selected.Points[^1];
+        }
+
+        return ordered;
+    }
+
+    private static List<DrawingStroke> OrderLargePlan(IReadOnlyList<DrawingStroke> strokes)
+    {
+        var ordered = new List<DrawingStroke>(strokes.Count);
+        var rows = strokes
+            .GroupBy(stroke => Math.Round(stroke.Points[0].Y, 9))
+            .OrderBy(group => group.Key)
+            .ToArray();
+        for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+        {
+            var leftToRight = rowIndex % 2 == 0;
+            var row = leftToRight
+                ? rows[rowIndex].OrderBy(stroke => Math.Min(stroke.Points[0].X, stroke.Points[^1].X))
+                : rows[rowIndex].OrderByDescending(stroke => Math.Max(stroke.Points[0].X, stroke.Points[^1].X));
+            foreach (var stroke in row)
+            {
+                var firstX = stroke.Points[0].X;
+                var lastX = stroke.Points[^1].X;
+                var shouldReverse = !stroke.IsClosed &&
+                    ((leftToRight && lastX < firstX) || (!leftToRight && lastX > firstX));
+                ordered.Add(shouldReverse
+                    ? new DrawingStroke(stroke.Points.Reverse(), stroke.IsClosed)
+                    : stroke);
+            }
         }
 
         return ordered;
