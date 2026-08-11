@@ -29,6 +29,12 @@ public partial class MainPageViewModel : ObservableObject
     public partial string SelectedMode { get; set; } = "가로 스캔라인";
 
     [ObservableProperty]
+    public partial string SelectedRenderStyle { get; set; } = "자동 채색";
+
+    [ObservableProperty]
+    public partial string SelectedSpeed { get; set; } = "빠르게";
+
+    [ObservableProperty]
     public partial string ProfileName { get; set; } = "새 게임 프로필";
 
     [ObservableProperty]
@@ -54,6 +60,9 @@ public partial class MainPageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsReducedMotion { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFloating { get; set; }
 
     [ObservableProperty]
     public partial bool IsProfileCalibrated { get; set; }
@@ -107,6 +116,17 @@ public partial class MainPageViewModel : ObservableObject
         _ => "이미지를 비교해 모드를 고릅니다. 큰 사진은 분석 시간이 더 걸릴 수 있습니다."
     };
 
+    public string RenderStyleDescription => SelectedRenderStyle == "검정 선화"
+        ? "색을 채우지 않고 원본의 경계만 검은 선으로 그립니다."
+        : "원본 색상을 자동으로 줄이고 HEX 색상을 바꾸면서 채색합니다.";
+
+    public string SpeedDescription => SelectedSpeed switch
+    {
+        "안전하게" => "1× · 입력 안정성을 우선합니다.",
+        "매우 빠르게" => "4× · 단순한 그림에서 사용하세요.",
+        _ => "2× · 속도와 입력 안정성의 권장 균형입니다."
+    };
+
     public string ProfileStatusLabel => IsProfileCalibrated
         ? "캘리브레이션 저장됨"
         : "캘리브레이션 필요";
@@ -122,6 +142,8 @@ public partial class MainPageViewModel : ObservableObject
         AppThemeMode.Dark => "어두운 테마",
         _ => "시스템 테마"
     };
+
+    public string FloatingLabel => IsFloating ? "플로팅 끄기" : "게임 위 플로팅";
 
     public string StageLabel => Stage switch
     {
@@ -171,6 +193,11 @@ public partial class MainPageViewModel : ObservableObject
         OnPropertyChanged(nameof(IsExecutionPanelVisible));
     }
 
+    partial void OnIsFloatingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FloatingLabel));
+    }
+
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(CanPrepare));
@@ -194,6 +221,16 @@ public partial class MainPageViewModel : ObservableObject
     partial void OnSelectedModeChanged(string value)
     {
         OnPropertyChanged(nameof(ModeDescription));
+    }
+
+    partial void OnSelectedRenderStyleChanged(string value)
+    {
+        OnPropertyChanged(nameof(RenderStyleDescription));
+    }
+
+    partial void OnSelectedSpeedChanged(string value)
+    {
+        OnPropertyChanged(nameof(SpeedDescription));
     }
 
     public void SetImage(string path)

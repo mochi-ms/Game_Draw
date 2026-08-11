@@ -2,6 +2,7 @@ using GameDraw.Automation.Windows.Capture;
 using GameDraw.Automation.Windows.Execution;
 using GameDraw.Automation.Windows.Input;
 using GameDraw.Automation.Windows.Targeting;
+using GameDraw.Core.Colors;
 using GameDraw.Core.Execution;
 using GameDraw.Core.Geometry;
 using GameDraw.Core.Models;
@@ -14,6 +15,7 @@ using GameDraw.Imaging.Decoding;
 using GameDraw.Imaging.Palettes;
 using GameDraw.Imaging.Processing;
 using GameDraw.Imaging.Quantization;
+using GameDraw.Imaging.Resampling;
 using GameDraw.Planning;
 using GameDraw.Profiles;
 
@@ -23,9 +25,12 @@ public sealed record PreparedDrawing(
     string SourcePath,
     ImageProcessingResult Image,
     DrawingPlanningResult Planning,
-    int RequestedColors)
+    int RequestedColors,
+    DrawingRenderStyle RenderStyle,
+    double SpeedMultiplier)
 {
     public string Summary =>
+        $"{(RenderStyle == DrawingRenderStyle.LineArt ? "검정 선화" : "자동 채색")} · " +
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
         $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}";
@@ -42,6 +47,7 @@ public sealed class DrawingSessionController : IDisposable
 {
     private readonly ImageDecoder _decoder = new();
     private readonly ImageProcessingPipeline _imaging = new();
+    private readonly PaletteQuantizer _quantizer = new();
     private readonly DrawingPlanner _planner = new();
     private readonly WindowsWindowLocator _windowLocator = new();
     private readonly WindowsWindowGeometryProvider _geometryProvider = new();
@@ -185,6 +191,8 @@ public sealed class DrawingSessionController : IDisposable
         string sourcePath,
         DrawingMode mode,
         int maximumColors,
+        DrawingRenderStyle renderStyle,
+        double speedMultiplier,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -199,6 +207,16 @@ public sealed class DrawingSessionController : IDisposable
             throw new ArgumentOutOfRangeException(nameof(maximumColors), "색상 수는 2~256이어야 합니다.");
         }
 
+        if (!Enum.IsDefined(renderStyle))
+        {
+            throw new ArgumentOutOfRangeException(nameof(renderStyle));
+        }
+
+        if (!double.IsFinite(speedMultiplier) || speedMultiplier is < 0.5d or > 6d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(speedMultiplier));
+        }
+
         status?.Report("원본 이미지를 디코딩하는 중입니다…");
         var decoded = await _decoder.DecodeFileAsync(sourcePath, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
@@ -209,42 +227,64 @@ public sealed class DrawingSessionController : IDisposable
                 : new PixelSize(512, 512));
 
         status?.Report("색상과 해상도를 최적화하는 중입니다…");
-        var processingOptions = new ImageProcessingOptions
+        ImageProcessingResult image;
+        if (renderStyle == DrawingRenderStyle.LineArt)
         {
-            TargetSize = target,
-            Palette = new PaletteBuildOptions
+            image = await Task.Run(() =>
             {
-                MaxColors = maximumColors,
-                MaxSamples = 250_000
-            },
-            Quantization = new QuantizationOptions
+                var resized = ImageResampler.Resize(decoded.Frame, target);
+                var lineArt = LineArtProcessor.Extract(resized);
+                var palette = new ColorPalette(new[] { RgbColor.Black }, "line-art");
+                var quantized = _quantizer.Quantize(lineArt, palette, new QuantizationOptions
+                {
+                    DitherMode = DitherMode.None,
+                    PreserveAlpha = true
+                });
+                cancellationToken.ThrowIfCancellationRequested();
+                return new ImageProcessingResult(decoded, lineArt, palette, quantized);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var processingOptions = new ImageProcessingOptions
             {
-                DitherMode = DitherMode.OrderedBayer4,
-                PreserveAlpha = true
-            }
-        };
-        var image = await Task.Run(
-            () => _imaging.ProcessFrame(
-                decoded.Frame,
-                processingOptions,
-                sourcePath,
-                decoded.FormatName,
-                cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+                TargetSize = target,
+                Palette = new PaletteBuildOptions
+                {
+                    MaxColors = maximumColors,
+                    MaxSamples = 250_000
+                },
+                Quantization = new QuantizationOptions
+                {
+                    DitherMode = DitherMode.OrderedBayer4,
+                    PreserveAlpha = true
+                }
+            };
+            image = await Task.Run(
+                () => _imaging.ProcessFrame(
+                    decoded.Frame,
+                    processingOptions,
+                    sourcePath,
+                    decoded.FormatName,
+                    cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
         status?.Report("그리기 경로와 예상 시간을 계산하는 중입니다…");
         var plannerOptions = new DrawingPlannerOptions
         {
-            Mode = mode,
-            MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
-            InterStrokeDelayMilliseconds = CurrentProfile.Timing.InterStrokeDelayMilliseconds,
-            ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds
+            Mode = renderStyle == DrawingRenderStyle.LineArt && mode == DrawingMode.Auto
+                ? DrawingMode.HorizontalScanline
+                : mode,
+            MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond * speedMultiplier,
+            InterStrokeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
+            ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier)
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
             cancellationToken).ConfigureAwait(false);
-        return new PreparedDrawing(sourcePath, image, planning, maximumColors);
+        return new PreparedDrawing(sourcePath, image, planning, maximumColors, renderStyle, speedMultiplier);
     }
 
     public async Task<DrawingExecutionResult> ExecuteAsync(
@@ -280,10 +320,10 @@ public sealed class DrawingSessionController : IDisposable
         }
 
         status?.Report("Podiums 캔버스가 현재 위치에 있는지 확인하는 중입니다…");
-        await VerifyVisualPreflightAsync(target, cancellationToken).ConfigureAwait(false);
+        var executionCanvas = await VerifyVisualPreflightAsync(target, cancellationToken).ConfigureAwait(false);
 
-        var binding = new TargetWindowBinding(geometry, _geometryProvider, CurrentProfile.Canvas.Bounds);
-        var input = new WindowsInputController();
+        var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
+        var input = new WindowsInputController(new WindowsInputOptions { MaxEventsPerSecond = 1_000d });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
         var hooks = new PodiumsExecutionHooks(CurrentProfile, context);
@@ -293,8 +333,6 @@ public sealed class DrawingSessionController : IDisposable
             _activeExecutor = executor;
         }
 
-        using var monitorCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var monitor = MonitorVisualSafetyAsync(binding, executor, status, monitorCancellation.Token);
         try
         {
             return await executor.ExecuteAsync(
@@ -302,6 +340,7 @@ public sealed class DrawingSessionController : IDisposable
                 new DrawingExecutionOptions
                 {
                     MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
+                    SpeedMultiplier = prepared.SpeedMultiplier,
                     InterStrokeDelayMilliseconds = CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
                     Hooks = hooks,
@@ -312,16 +351,6 @@ public sealed class DrawingSessionController : IDisposable
         }
         finally
         {
-            monitorCancellation.Cancel();
-            try
-            {
-                await monitor.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected when execution finishes before the next capture.
-            }
-
             lock (_executionLock)
             {
                 _activeExecutor = null;
@@ -406,63 +435,13 @@ public sealed class DrawingSessionController : IDisposable
         throw new InvalidOperationException("포그라운드 상태의 Roblox Podiums 창을 찾지 못했습니다.");
     }
 
-    private async Task MonitorVisualSafetyAsync(
-        TargetWindowBinding binding,
-        WindowsDrawingExecutor executor,
-        IProgress<string>? status,
-        CancellationToken cancellationToken)
-    {
-        if (!CurrentProfile.VisualVerification.Enabled)
-        {
-            return;
-        }
-
-        var coordinator = _adapter.CreateVisualSafetyCoordinator(CurrentProfile, executor);
-        coordinator.Reset(new VisualObservation(
-            new PixelSize(binding.Snapshot.ClientWidth, binding.Snapshot.ClientHeight),
-            CurrentProfile.Canvas.Bounds,
-            1d));
-        var captureFailures = 0;
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            await Task.Delay(750, cancellationToken).ConfigureAwait(false);
-            if (!await binding.RefreshAsync(cancellationToken).ConfigureAwait(false))
-            {
-                executor.RequestVisualPause("대상 창 좌표를 갱신하지 못했습니다.");
-                status?.Report("대상 창을 확인할 수 없어 안전 일시 정지했습니다. F7로 확인 후 재개하세요.");
-                continue;
-            }
-
-            var frame = await _capture.CaptureAsync(binding.Snapshot, cancellationToken).ConfigureAwait(false);
-            if (frame is null)
-            {
-                captureFailures++;
-                if (captureFailures >= CurrentProfile.VisualVerification.ConsecutiveFailuresBeforePause)
-                {
-                    executor.RequestVisualPause("Roblox 화면 캡처가 연속으로 실패했습니다.");
-                    status?.Report("화면 인식에 실패해 안전 일시 정지했습니다. F7로 확인 후 재개하세요.");
-                }
-
-                continue;
-            }
-
-            captureFailures = 0;
-            var detection = _adapter.VisualDetector.Detect(frame.ToImageFrame());
-            var notice = coordinator.Observe(detection);
-            if (notice.ShouldPause)
-            {
-                status?.Report("캔버스 위치 변화가 감지되어 안전 일시 정지했습니다. F7로 확인 후 재개하세요.");
-            }
-        }
-    }
-
-    private async Task VerifyVisualPreflightAsync(
+    private async Task<NormalizedRect> VerifyVisualPreflightAsync(
         TargetWindowSnapshot target,
         CancellationToken cancellationToken)
     {
         if (!CurrentProfile.VisualVerification.Enabled)
         {
-            return;
+            return CurrentProfile.Canvas.Bounds;
         }
 
         var captured = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false)
@@ -474,24 +453,27 @@ public sealed class DrawingSessionController : IDisposable
                 detection.Canvas.Reason ?? "현재 화면에서 Podiums 캔버스를 찾지 못했습니다.");
         }
 
-        var monitor = new VisualDriftMonitor(new VisualVerificationPolicy
-        {
-            MinimumCanvasConfidence = CurrentProfile.VisualVerification.MinimumConfidence,
-            MaximumCanvasShiftPixels = CurrentProfile.VisualVerification.MaximumCanvasShiftPixels,
-            MaximumCanvasScaleDelta = CurrentProfile.VisualVerification.MaximumCanvasScaleDelta,
-            MaximumAnchorShiftPixels = CurrentProfile.VisualVerification.MaximumAnchorShiftPixels,
-            ConsecutiveFailuresBeforePause = 1
-        });
-        monitor.Reset(new VisualObservation(
+        var saved = CurrentProfile.Canvas.Bounds;
+        var detected = detection.Canvas.NormalizedBounds;
+        var allowedShift = Math.Max(
+            CurrentProfile.VisualVerification.MaximumCanvasShiftPixels,
+            Math.Min(captured.Size.Width, captured.Size.Height) * 0.06d);
+        var allowedScale = Math.Max(CurrentProfile.VisualVerification.MaximumCanvasScaleDelta, 0.25d);
+        var registration = CanvasRegistration.Compare(
+            saved,
+            detected,
             captured.Size,
-            CurrentProfile.Canvas.Bounds,
-            1d));
-        var notice = monitor.Observe(detection.ToObservation());
-        if (notice.IsDriftDetected)
+            maximumCenterShiftPixels: allowedShift,
+            maximumScaleDelta: allowedScale);
+        if (!registration.IsCompatible)
         {
             throw new InvalidOperationException(
-                "현재 화면의 캔버스가 저장된 Podiums 캘리브레이션과 일치하지 않습니다. 다시 캘리브레이션하세요.");
+                $"현재 캔버스가 저장된 보정 위치와 크게 다릅니다. " +
+                $"겹침 {registration.IntersectionOverUnion:P0}, " +
+                $"중심 차이 {registration.CenterShiftPixels:0}px입니다. 연결 설정을 다시 진행하세요.");
         }
+
+        return detected;
     }
 
     private static PixelSize FitWithin(PixelSize source, PixelSize bounds)

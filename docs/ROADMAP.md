@@ -49,3 +49,5 @@ Implemented with a versioned portable profile service, schema migration, reusabl
 ## Phase 9 — production hardening
 
 Run image-quality, DPI, multi-monitor, long-run, cancellation, packaging, and regression tests. Publish a signed or documented self-contained build.
+
+Implemented with automatic canvas re-registration, false-positive-free execution monitoring, monochrome line-art extraction, automatic color rendering, 1×/2×/4× speed presets, an always-on-top floating workspace, failure-state cleanup, regression tests, and a documented self-contained Windows publish path.

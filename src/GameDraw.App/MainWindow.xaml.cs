@@ -14,6 +14,8 @@ namespace GameDraw_App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
+    private RectInt32? _normalBounds;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -43,5 +45,39 @@ public sealed partial class MainWindow : Window
         AppWindow.Move(new PointInt32(
             workArea.X + ((workArea.Width - width) / 2),
             workArea.Y + ((workArea.Height - height) / 2)));
+    }
+
+    public void SetFloatingMode(bool enabled)
+    {
+        if (AppWindow.Presenter is not OverlappedPresenter presenter)
+        {
+            return;
+        }
+
+        if (enabled)
+        {
+            _normalBounds ??= new RectInt32(
+                AppWindow.Position.X,
+                AppWindow.Position.Y,
+                AppWindow.Size.Width,
+                AppWindow.Size.Height);
+            var display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+            if (display is not null)
+            {
+                var work = display.WorkArea;
+                var width = Math.Min(work.Width, Math.Max(820, (int)Math.Round(work.Width * 0.52)));
+                var height = Math.Min(work.Height, Math.Max(760, work.Height - 80));
+                AppWindow.Resize(new SizeInt32(width, height));
+                AppWindow.Move(new PointInt32(work.X + work.Width - width - 24, work.Y + 24));
+            }
+        }
+        else if (_normalBounds is { } bounds)
+        {
+            AppWindow.Resize(new SizeInt32(bounds.Width, bounds.Height));
+            AppWindow.Move(new PointInt32(bounds.X, bounds.Y));
+            _normalBounds = null;
+        }
+
+        presenter.IsAlwaysOnTop = enabled;
     }
 }

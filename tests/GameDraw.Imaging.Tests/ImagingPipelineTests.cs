@@ -175,4 +175,36 @@ public sealed class ImagingPipelineTests
         Assert.Single(result.Quantized.Indices);
         Assert.Equal(2, result.Palette.Count);
     }
+
+    [Fact]
+    public void LineArtExtractsBlackEdgesWithTransparentBackground()
+    {
+        var pixels = new RgbaPixel[25];
+        for (var y = 0; y < 5; y++)
+        {
+            for (var x = 0; x < 5; x++)
+            {
+                pixels[(y * 5) + x] = RgbaPixel.Opaque(x < 2 ? RgbColor.Black : RgbColor.White);
+            }
+        }
+
+        var result = LineArtProcessor.Extract(new CoreImageFrame(5, 5, pixels));
+
+        Assert.Contains(result.Pixels, pixel => pixel.IsOpaque && pixel.Color == RgbColor.Black);
+        Assert.Contains(result.Pixels, pixel => pixel.IsTransparent);
+        Assert.DoesNotContain(result.Pixels, pixel => pixel.IsOpaque && pixel.Color != RgbColor.Black);
+    }
+
+    [Fact]
+    public void LineArtLeavesUniformImageTransparent()
+    {
+        var frame = new CoreImageFrame(
+            4,
+            4,
+            Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), 16).ToArray());
+
+        var result = LineArtProcessor.Extract(frame);
+
+        Assert.All(result.Pixels, pixel => Assert.True(pixel.IsTransparent));
+    }
 }

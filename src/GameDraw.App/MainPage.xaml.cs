@@ -167,9 +167,9 @@ public sealed partial class MainPage : Page, IDisposable
     {
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(CreateHelpStep("1. 이미지 선택", "PNG, JPG, WEBP 또는 BMP 파일을 고릅니다."));
-        content.Children.Add(CreateHelpStep("2. 이미지 분석", "가로 스캔라인이 일반 사진에 가장 빠른 기본값입니다. 픽셀 점찍기는 더 정확하지만 오래 걸립니다."));
+        content.Children.Add(CreateHelpStep("2. 이미지 분석", "자동 채색은 원본 색을 줄여 순서대로 칠하고, 검정 선화는 외곽선만 추출합니다. 가로 스캔라인과 ‘빠르게’가 일반적인 권장값입니다."));
         content.Children.Add(CreateHelpStep("3. Podiums 연결", "처음 한 번만 Roblox 화면에서 안내되는 8개 위치를 차례로 가리키고 F6을 누릅니다."));
-        content.Children.Add(CreateHelpStep("4. 그리기 시작", "버튼을 누른 뒤 15초 안에 Roblox로 전환합니다. F7은 일시정지, F8은 즉시 중지입니다."));
+        content.Children.Add(CreateHelpStep("4. 그리기 시작", "필요하면 ‘게임 위에 띄우기’를 켠 뒤 시작 버튼을 누르고 15초 안에 Roblox로 전환합니다. F7은 일시정지, F8은 즉시 중지입니다."));
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -179,6 +179,19 @@ public sealed partial class MainPage : Page, IDisposable
             DefaultButton = ContentDialogButton.Close
         };
         await dialog.ShowAsync();
+    }
+
+    private void ToggleFloating_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.IsFloating = !ViewModel.IsFloating;
+        if (App.Window is MainWindow window)
+        {
+            window.SetFloatingMode(ViewModel.IsFloating);
+        }
+
+        ViewModel.StatusMessage = ViewModel.IsFloating
+            ? "GameDraw를 게임 화면 위에 고정했습니다. 그리기 중에는 앱을 클릭하지 말고 F7/F8을 사용하세요."
+            : "플로팅을 해제하고 원래 창 크기로 돌아왔습니다.";
     }
 
     private static StackPanel CreateHelpStep(string title, string description)
@@ -398,6 +411,8 @@ public sealed partial class MainPage : Page, IDisposable
                 ViewModel.SelectedImagePath,
                 SelectedDrawingMode(),
                 SafeWholeNumber(ViewModel.MaximumColors, 128, 2, 256),
+                SelectedRenderStyle(),
+                SelectedSpeedMultiplier(),
                 status,
                 preparationCancellation.Token);
             ShowProcessedPreview(_preparedDrawing.Image.Quantized.Rendered);
@@ -497,6 +512,7 @@ public sealed partial class MainPage : Page, IDisposable
         finally
         {
             _executionWindow?.Hide();
+            ViewModel.IsExecutionPanelOpen = false;
             UnregisterExecutionHotkeys();
             _executionCancellation?.Dispose();
             _executionCancellation = null;
@@ -512,6 +528,8 @@ public sealed partial class MainPage : Page, IDisposable
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainPageViewModel.SelectedMode)
+            or nameof(MainPageViewModel.SelectedRenderStyle)
+            or nameof(MainPageViewModel.SelectedSpeed)
             or nameof(MainPageViewModel.MaximumColors)
             or nameof(MainPageViewModel.LogicalWidth)
             or nameof(MainPageViewModel.LogicalHeight))
@@ -576,7 +594,7 @@ public sealed partial class MainPage : Page, IDisposable
         PreviewDescription.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         FileHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         CalibrationHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
-        ModeDescriptionText.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        AnalysisDescriptionPanel.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         PreviewBadge.Visibility = width < 900 ? Visibility.Collapsed : Visibility.Visible;
         ExecutionOverlay.Margin = mode == ResponsiveLayoutMode.Compact ? new Thickness(10) : new Thickness(18);
     }
@@ -782,6 +800,19 @@ public sealed partial class MainPage : Page, IDisposable
             _ => DrawingMode.Auto
         };
 
+    private DrawingRenderStyle SelectedRenderStyle()
+        => ViewModel.SelectedRenderStyle == "검정 선화"
+            ? DrawingRenderStyle.LineArt
+            : DrawingRenderStyle.AutoColor;
+
+    private double SelectedSpeedMultiplier()
+        => ViewModel.SelectedSpeed switch
+        {
+            "안전하게" => 1d,
+            "매우 빠르게" => 4d,
+            _ => 2d
+        };
+
     private static int SafeWholeNumber(double value, int fallback, int minimum, int maximum)
         => double.IsFinite(value)
             ? Math.Clamp((int)Math.Round(value), minimum, maximum)
@@ -795,10 +826,10 @@ public sealed partial class MainPage : Page, IDisposable
         {
             var pixel = frame.Pixels[index];
             var offset = index * 4;
-            bytes[offset] = (byte)((pixel.Color.B * pixel.Alpha + 127) / 255);
-            bytes[offset + 1] = (byte)((pixel.Color.G * pixel.Alpha + 127) / 255);
-            bytes[offset + 2] = (byte)((pixel.Color.R * pixel.Alpha + 127) / 255);
-            bytes[offset + 3] = pixel.Alpha;
+            bytes[offset] = CompositeOnWhite(pixel.Color.B, pixel.Alpha);
+            bytes[offset + 1] = CompositeOnWhite(pixel.Color.G, pixel.Alpha);
+            bytes[offset + 2] = CompositeOnWhite(pixel.Color.R, pixel.Alpha);
+            bytes[offset + 3] = byte.MaxValue;
         }
 
         using var stream = bitmap.PixelBuffer.AsStream();
@@ -807,6 +838,9 @@ public sealed partial class MainPage : Page, IDisposable
         PreviewImage.Source = bitmap;
         PreviewBadgeLabel.Text = "변환 미리보기";
     }
+
+    private static byte CompositeOnWhite(byte channel, byte alpha)
+        => (byte)(((channel * alpha) + (byte.MaxValue * (byte.MaxValue - alpha)) + 127) / byte.MaxValue);
 
     private static bool IsSupportedImage(string? path)
     {

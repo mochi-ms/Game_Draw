@@ -108,6 +108,38 @@ public sealed class VisionTests
         Assert.Null(monitor.Baseline);
     }
 
+    [Fact]
+    public void CanvasRegistrationAcceptsSmallManualCalibrationDifference()
+    {
+        var result = CanvasRegistration.Compare(
+            new NormalizedRect(0.20, 0.20, 0.50, 0.50),
+            new NormalizedRect(0.205, 0.195, 0.498, 0.505),
+            new PixelSize(1920, 1080),
+            maximumCenterShiftPixels: 64d,
+            maximumScaleDelta: 0.25d);
+
+        Assert.True(result.IsCompatible);
+        Assert.True(result.IntersectionOverUnion > 0.95d);
+        Assert.True(result.CenterShiftPixels < 16d);
+        Assert.True(result.ScaleDelta < 0.02d);
+    }
+
+    [Fact]
+    public void CanvasRegistrationRejectsAnUnrelatedBrightRegion()
+    {
+        var result = CanvasRegistration.Compare(
+            new NormalizedRect(0.20, 0.20, 0.50, 0.50),
+            new NormalizedRect(0.72, 0.08, 0.20, 0.20),
+            new PixelSize(1920, 1080),
+            maximumCenterShiftPixels: 64d,
+            maximumScaleDelta: 0.25d);
+
+        Assert.False(result.IsCompatible);
+        Assert.Equal(0d, result.IntersectionOverUnion);
+        Assert.True(result.CenterShiftPixels > 500d);
+        Assert.True(result.ScaleDelta > 0.5d);
+    }
+
     private static ImageFrame Solid(int width, int height, RgbColor color)
         => new(width, height, Enumerable.Repeat(RgbaPixel.Opaque(color), width * height).ToArray());
 
