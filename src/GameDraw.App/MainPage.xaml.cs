@@ -179,7 +179,7 @@ public sealed partial class MainPage : Page, IDisposable
         content.Children.Add(CreateHelpSection("미리보기 기준", "분석 뒤 보이는 ‘실행 경로 미리보기’가 실제 마우스가 따라갈 선입니다. 원본 픽셀이 아니라 실행 스트로크를 직접 렌더링하므로 결과를 시작 전에 확인할 수 있습니다."));
         content.Children.Add(CreateHelpSection("자연스러운 펜선", "인물·애니 캐릭터 권장 모드입니다. 굵은 원본 선의 양쪽 테두리가 아니라 암부의 중심선을 뽑아, 작가가 한 번씩 선을 긋는 것처럼 이중선과 털선을 줄입니다."));
         content.Children.Add(CreateHelpSection("정밀 윤곽선", "색·밝기 경계를 세밀하게 따는 모드입니다. 로고, 도형, 이미 완성된 흑백 선화에 적합하지만 사진에서는 작은 질감도 선으로 잡힐 수 있습니다."));
-        content.Children.Add(CreateHelpSection("원본 색상 · 픽셀 컬러", "원본 색상은 같은 색 구간을 빠른 가로 획으로 채우고, 픽셀 컬러는 작은 도트 그림을 점 단위로 보존합니다. 연결 탭에서 도구·브러시·HEX 위치를 먼저 저장해야 합니다. 색 변경은 HEX 입력란 클릭 → Ctrl+A → Delete → 코드 입력 → Enter 순서로 자동 실행됩니다."));
+        content.Children.Add(CreateHelpSection("원본 색상 · 픽셀 컬러", "원본 색상은 같은 색 구간을 빠른 가로 획으로 채우고, 픽셀 컬러는 작은 도트 그림을 점 단위로 보존합니다. 연결 탭에서 도구·HEX 위치를 먼저 저장하세요. 펜 굵기는 게임에서 수동으로 맞추며 GameDraw는 슬라이더를 건드리지 않습니다. 색 변경은 HEX 입력란 클릭 → Ctrl+A → Delete → 코드 입력 → Enter 순서로 자동 실행됩니다."));
         content.Children.Add(CreateHelpSection("그림 품질", "빠른 초안은 선 수를 크게 줄이고, 균형은 기본 권장값, 고품질은 얼굴·머리카락 세부를 늘리며, 원본 우선은 가장 촘촘한 경로를 만듭니다. 선택에 따라 미리보기와 실제 마우스 경로가 함께 바뀝니다."));
         content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴·눈이 있을 가능성이 높은 위쪽 중심 영역의 선을 먼저 그립니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
         content.Children.Add(CreateHelpSection("속도와 정확도", "매우 빠르게에서도 긴 벡터를 순간 이동하지 않고 게임이 인식할 수 있는 짧은 간격으로 보간합니다. 품질을 올리면 이 간격도 촘촘해져 더 정확하지만 시간이 늘어납니다."));
@@ -447,7 +447,7 @@ public sealed partial class MainPage : Page, IDisposable
                 LogicalHeight = canvas.LogicalHeight,
                 RequireControls = true,
                 IncludeFillTool = true,
-                IncludeBrushSize = true,
+                IncludeBrushSize = false,
                 IncludeColorControls = true
             });
             _hotkeys?.Register(InputKey.F6);
@@ -523,7 +523,7 @@ public sealed partial class MainPage : Page, IDisposable
             var profile = await App.DrawingSession.SaveCalibrationAsync(result, ViewModel.ProfileName);
             SetProfileState(profile);
             ViewModel.Stage = _preparedDrawing is null ? WorkspaceStage.Configure : WorkspaceStage.Ready;
-            ViewModel.StatusMessage = "드래그한 캔버스 영역을 저장했습니다. 색상 모드는 도구·브러시·HEX 위치도 설정하세요.";
+            ViewModel.StatusMessage = "드래그한 캔버스 영역을 저장했습니다. 색상 모드는 도구·HEX 위치도 설정하세요.";
         }
         catch (Exception exception)
         {
@@ -641,7 +641,7 @@ public sealed partial class MainPage : Page, IDisposable
 
         if (ViewModel.SelectedMode is "원본 색상" or "픽셀 컬러" && !ViewModel.IsColorToolsCalibrated)
         {
-            ViewModel.StatusMessage = "색상 모드는 도구·브러시·HEX 위치 설정이 필요합니다.";
+            ViewModel.StatusMessage = "색상 모드는 도구·HEX 위치 설정이 필요합니다.";
             return;
         }
 
@@ -973,12 +973,12 @@ public sealed partial class MainPage : Page, IDisposable
         {
             PodiumsCalibrationStep.CaptureCanvasTopLeft => "1/8 · 흰색 캔버스의 왼쪽 위 모서리에 마우스를 놓고 F6",
             PodiumsCalibrationStep.CaptureCanvasBottomRight => "2/8 · 흰색 캔버스의 오른쪽 아래 모서리에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CapturePencilTool => "1/6 · 연필 도구 가운데에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureEraserTool => "2/6 · 지우개 도구 가운데에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureFillTool => "3/6 · 채우기 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CapturePencilTool => "1/4 · 연필 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureEraserTool => "2/4 · 지우개 도구 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureFillTool => "3/4 · 채우기 도구 가운데에 마우스를 놓고 F6",
             PodiumsCalibrationStep.CaptureBrushSizeMinimum => "4/6 · 굵기 슬라이더의 최소값 위치에 마우스를 놓고 F6",
             PodiumsCalibrationStep.CaptureBrushSizeMaximum => "5/6 · 굵기 슬라이더의 최대값 위치에 마우스를 놓고 F6",
-            PodiumsCalibrationStep.CaptureHexInput => "6/6 · HEX 입력란 가운데에 마우스를 놓고 F6",
+            PodiumsCalibrationStep.CaptureHexInput => "4/4 · HEX 입력란 가운데에 마우스를 놓고 F6",
             _ => _calibration.State.Message
         };
     }

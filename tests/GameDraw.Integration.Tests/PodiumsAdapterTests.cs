@@ -164,12 +164,12 @@ public sealed class PodiumsAdapterTests
         Assert.True(size.Succeeded, size.Message);
         Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
         Assert.Contains(new ScreenPoint(190, 110), input.Clicks);
-        Assert.Contains(new ScreenPoint(180, 173), input.Clicks);
+        Assert.Contains(new ScreenPoint(180, 127), input.Clicks);
         Assert.Empty(input.TypedText);
     }
 
     [Fact]
-    public async Task ExecutionHooksSelectPencilSliderAndEveryRequestedColor()
+    public async Task ExecutionHooksKeepCurrentToolAndBrushThenChangeOnlyRequestedColor()
     {
         var profile = CreateConfiguredProfile();
         var input = new RecordingInputController();
@@ -187,8 +187,8 @@ public sealed class PodiumsAdapterTests
         await hooks.BeforePlanAsync(plan);
         await hooks.BeforeColorGroupAsync(new RgbColor(0xAA, 0xBB, 0xCC), 0);
 
-        Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
-        Assert.Contains(new ScreenPoint(180, 169), input.Clicks);
+        Assert.DoesNotContain(new ScreenPoint(170, 110), input.Clicks);
+        Assert.DoesNotContain(input.Clicks, point => point.X == 180 && point.Y is >= 120 and <= 180);
         Assert.Contains("#AABBCC", input.TypedText);
     }
 

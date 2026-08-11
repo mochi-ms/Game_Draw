@@ -408,13 +408,13 @@
                                     Grid.Row="1"
                                     Grid.ColumnSpan="2"
                                     Click="ToolSetup_Click"
-                                    Content="도구 · 브러시 · HEX 위치 설정 (F6)"
+                                    Content="도구 · HEX 위치 설정 (F6)"
                                     HorizontalAlignment="Stretch"
                                     Padding="14,8" />
                             </Grid>
                             <TextBlock
                                 x:Name="CalibrationHint"
-                                Text="영역은 박스로 드래그합니다. 색상 모드는 연필·브러시·HEX 위치를 한 번 저장해야 합니다."
+                                Text="영역은 박스로 드래그합니다. 펜 굵기는 게임에서 수동 설정하며 프로그램은 건드리지 않습니다."
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                         </StackPanel>
@@ -629,7 +629,7 @@
                                 <x:String>원본 이미지 비율</x:String>
                             </ComboBox>
                             <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
-                            <Button Click="ToolSetup_Click" Content="도구 · 브러시 · HEX 위치 설정 (F6)" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <Button Click="ToolSetup_Click" Content="도구 · HEX 위치 설정 (F6)" HorizontalAlignment="Stretch" Padding="12,10" />
                             <TextBlock Text="색상 모드에서는 HEX 입력란을 클릭한 뒤 Ctrl+A → Delete → 색상 코드 → Enter 순서로 자동 변경합니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12">
                                 <TextBlock Text="캔버스를 지정한 뒤 이미지 탭에서 분석하고, 실행 탭에서 시작하세요. 실행 시 GameDraw는 자동으로 숨겨집니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />

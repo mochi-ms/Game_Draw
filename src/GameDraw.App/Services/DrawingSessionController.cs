@@ -379,10 +379,7 @@ public sealed class DrawingSessionController : IDisposable
             facePriorityApplied = true;
         }
 
-        var previewBrushSize = renderStyle == DrawingRenderStyle.NaturalLineArt && planning.Plan.Mode == DrawingMode.CleanStroke
-            ? qualitySettings.PreferredBrushSizePixels
-            : 1;
-        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan, previewBrushSize);
+        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan);
         return new PreparedDrawing(
             sourcePath,
             image,
@@ -441,23 +438,12 @@ public sealed class DrawingSessionController : IDisposable
         });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
-        // Exact-color raster modes need the smallest calibrated brush as well;
-        // a wider default brush overwrites adjacent rows and destroys the
-        // quantized preview even when every HEX value is correct.
-        var controlLayout = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
-        var preferredBrushSize = prepared.RenderStyle == DrawingRenderStyle.NaturalLineArt && prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
-            ? Math.Clamp(
-                QualitySettings.For(prepared.Quality, color: false).PreferredBrushSizePixels,
-                controlLayout.MinimumBrushSizePixels,
-                controlLayout.MaximumBrushSizePixels)
-            : prepared.RenderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.AutoColor ||
-                prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
-                ? controlLayout.MinimumBrushSizePixels
-                : (int?)null;
+        // Brush thickness is intentionally left untouched. Podiums slider
+        // orientation and range can change between UI versions, and users can
+        // safely choose the desired thickness in-game before pressing F5.
         var hooks = new PodiumsExecutionHooks(
             CurrentProfile,
             context,
-            preferredBrushSize,
             selectColors: prepared.RenderStyle == DrawingRenderStyle.AutoColor);
         lock (_executionLock)
         {
@@ -509,15 +495,14 @@ public sealed class DrawingSessionController : IDisposable
         int MinimumComponentPixels,
         double SimplificationTolerance,
         double MinimumStrokeLength,
-        int MaximumMoveStepPixels,
-        int PreferredBrushSizePixels)
+        int MaximumMoveStepPixels)
     {
         public static QualitySettings For(DrawingQualityPreset quality, bool color) => quality switch
         {
-            DrawingQualityPreset.FastDraft => new(color ? 96 : 288, 0.46d, 9, 1.35d, 5d, 8, 3),
-            DrawingQualityPreset.High => new(color ? 192 : 448, 0.76d, 4, 0.55d, 2.5d, 4, 2),
-            DrawingQualityPreset.OriginalPriority => new(color ? 256 : 512, 0.9d, 3, 0.35d, 2d, 3, 1),
-            _ => new(color ? 144 : 384, 0.62d, 6, 0.85d, 3.5d, 6, 2)
+            DrawingQualityPreset.FastDraft => new(color ? 96 : 288, 0.46d, 9, 1.35d, 5d, 8),
+            DrawingQualityPreset.High => new(color ? 192 : 448, 0.76d, 4, 0.55d, 2.5d, 4),
+            DrawingQualityPreset.OriginalPriority => new(color ? 256 : 512, 0.9d, 3, 0.35d, 2d, 3),
+            _ => new(color ? 144 : 384, 0.62d, 6, 0.85d, 3.5d, 6)
         };
     }
 

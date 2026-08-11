@@ -188,9 +188,22 @@ public sealed class PodiumsToolAdapter
         {
             var span = Math.Max(1, layout.MaximumBrushSizePixels - layout.MinimumBrushSizePixels);
             var amount = (sizePixels - layout.MinimumBrushSizePixels) / (double)span;
+            // Podiums uses a vertical size slider whose smallest brush is at
+            // the top. Older calibration instructions allowed the two ends to
+            // be stored in reverse, which made a request for size 1 click the
+            // bottom and select the maximum (currently displayed as 60).
+            // Resolve the visual low/high endpoints from their geometry so
+            // both old and newly calibrated profiles remain safe.
+            var first = layout.BrushSizeMinimum;
+            var second = layout.BrushSizeMaximum;
+            var vertical = Math.Abs(second.Y - first.Y) >= Math.Abs(second.X - first.X);
+            var minimumPoint = vertical
+                ? (first.Y <= second.Y ? first : second)
+                : (first.X <= second.X ? first : second);
+            var maximumPoint = minimumPoint == first ? second : first;
             var sliderPoint = new GameDraw.Core.Geometry.NormalizedPoint(
-                layout.BrushSizeMinimum.X + ((layout.BrushSizeMaximum.X - layout.BrushSizeMinimum.X) * amount),
-                layout.BrushSizeMinimum.Y + ((layout.BrushSizeMaximum.Y - layout.BrushSizeMinimum.Y) * amount));
+                minimumPoint.X + ((maximumPoint.X - minimumPoint.X) * amount),
+                minimumPoint.Y + ((maximumPoint.Y - minimumPoint.Y) * amount));
             await context.Input.ClickAsync(context.Map(sliderPoint), cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             return new(true, $"Selected Podiums brush size {sizePixels}px.");
@@ -396,50 +409,27 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
     private readonly GameProfile _profile;
     private readonly IGameAdapterExecutionContext _context;
     private readonly PodiumsColorAdapter _colors = new();
-    private readonly PodiumsToolAdapter _tools = new();
-    private readonly int? _preferredBrushSizePixels;
     private readonly bool _selectColors;
 
     public PodiumsExecutionHooks(
         GameProfile profile,
         IGameAdapterExecutionContext context,
-        int? preferredBrushSizePixels = null,
         bool selectColors = true)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        _preferredBrushSizePixels = preferredBrushSizePixels;
         _selectColors = selectColors;
     }
 
-    public async ValueTask BeforePlanAsync(
+    public ValueTask BeforePlanAsync(
         GameDraw.Core.Drawing.DrawingPlan plan,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        var layout = PodiumsProfileSettings.ReadControlLayout(_profile);
-        if (layout.HasTool(PodiumsToolKind.Pencil))
-        {
-            var toolResult = await _tools.SelectToolAsync(
-                PodiumsToolKind.Pencil,
-                _profile,
-                _context,
-                cancellationToken).ConfigureAwait(false);
-            EnsureSucceeded(toolResult);
-        }
-
-        if (layout.HasBrushSizeControl)
-        {
-            var sizeResult = await _tools.SelectBrushSizeAsync(
-                Math.Clamp(
-                    _preferredBrushSizePixels ?? layout.DefaultBrushSizePixels,
-                    layout.MinimumBrushSizePixels,
-                    layout.MaximumBrushSizePixels),
-                _profile,
-                _context,
-                cancellationToken).ConfigureAwait(false);
-            EnsureSucceeded(sizeResult);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        // Respect the exact tool and brush size already selected by the user.
+        // Execution preparation must not click any Podiums drawing controls.
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask BeforeColorGroupAsync(
