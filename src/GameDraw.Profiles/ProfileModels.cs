@@ -81,6 +81,8 @@ public sealed record GameProfile
 
     public TimingProfile Timing { get; init; } = new();
 
+    public VisualVerificationProfile VisualVerification { get; init; } = new();
+
     /// <summary>
     /// Adapter-specific settings kept as string values so profiles remain
     /// portable and can be extended without changing the core schema for
@@ -175,6 +177,15 @@ public sealed record GameProfile
         if (Timing.InterStrokeDelayMilliseconds < 0 || Timing.ColorChangeDelayMilliseconds < 0)
         {
             errors.Add("대기 시간은 음수가 될 수 없습니다.");
+        }
+
+        if (VisualVerification is null)
+        {
+            errors.Add("Visual verification settings are missing.");
+        }
+        else
+        {
+            errors.AddRange(VisualVerification.Validate());
         }
 
         return new ProfileValidationResult(errors, warnings);

@@ -3,6 +3,7 @@ using GameDraw.Core.Execution;
 using GameDraw.Core.Models;
 using GameDraw.Core.Targeting;
 using GameDraw.Profiles;
+using GameDraw.GameAdapters.Podiums.Vision;
 
 namespace GameDraw.GameAdapters.Podiums;
 
@@ -244,6 +245,17 @@ public sealed class PodiumsGameAdapter : IGameAdapter
         GameAdapterCapabilities.FillTool;
 
     public IReadOnlyList<DrawingMode> SupportedModes => SupportedDrawingModes;
+
+    public PodiumsVisualDetector VisualDetector { get; } = new();
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "Factory remains on the adapter for discoverability in app composition.")]
+    public PodiumsVisualSafetyCoordinator CreateVisualSafetyCoordinator(
+        GameProfile profile,
+        IVisualPauseController? pauseController = null)
+        => PodiumsVisualSafetyCoordinator.ForProfile(profile, pauseController);
 
     public GameProfile CreateDefaultProfile()
         => PodiumsProfileSettings.CreateDefaultProfile();

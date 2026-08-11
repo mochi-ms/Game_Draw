@@ -140,6 +140,35 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
+    public async Task VisualPauseRequestBlocksInputUntilCleared()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        executor.RequestVisualPause("canvas drift");
+
+        var execution = executor.ExecuteAsync(
+            CreatePlan(),
+            new DrawingExecutionOptions
+            {
+                SpeedMultiplier = 100_000,
+                InterStrokeDelayMilliseconds = 0,
+                ColorChangeDelayMilliseconds = 0
+            });
+        await Task.Delay(20);
+
+        Assert.True(executor.VisualPauseRequested);
+        Assert.Equal("canvas drift", executor.VisualPauseReason);
+        Assert.Empty(input.Moves);
+
+        executor.ClearVisualPause();
+        var result = await execution;
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.False(executor.VisualPauseRequested);
+    }
+
+    [Fact]
     public async Task WindowsVerifierRejectsInvalidHandle()
     {
         var verifier = new WindowsTargetVerifier();

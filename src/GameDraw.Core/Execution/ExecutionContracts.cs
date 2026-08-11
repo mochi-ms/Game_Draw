@@ -91,6 +91,17 @@ public interface IPauseController
     void Resume();
 }
 
+public interface IVisualPauseController
+{
+    bool VisualPauseRequested { get; }
+
+    string? VisualPauseReason { get; }
+
+    void RequestVisualPause(string reason);
+
+    void ClearVisualPause();
+}
+
 public interface ITargetVerifier
 {
     ValueTask<TargetVerificationResult> VerifyAsync(

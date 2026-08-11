@@ -6,12 +6,18 @@ using GameDraw.Core.Geometry;
 
 namespace GameDraw.Automation.Windows.Execution;
 
-public sealed class WindowsDrawingExecutor : IDrawingExecutor, IPauseController, IEmergencyStopController, IDisposable
+public sealed class WindowsDrawingExecutor :
+    IDrawingExecutor,
+    IPauseController,
+    IEmergencyStopController,
+    IVisualPauseController,
+    IDisposable
 {
     private readonly IWindowsInputController _input;
     private readonly TargetWindowBinding _binding;
     private readonly ITargetVerifier _targetVerifier;
     private readonly PauseGate _pauseGate = new();
+    private readonly object _visualPauseLock = new();
     private int _running;
     private int _stopRequested;
     private CancellationTokenSource? _activeCancellation;
@@ -19,6 +25,8 @@ public sealed class WindowsDrawingExecutor : IDrawingExecutor, IPauseController,
     private long _activeStarted;
     private int _activeCompleted;
     private int _activeTotal;
+    private bool _visualPauseRequested;
+    private string? _visualPauseReason;
     private bool _disposed;
 
     public WindowsDrawingExecutor(
@@ -36,6 +44,28 @@ public sealed class WindowsDrawingExecutor : IDrawingExecutor, IPauseController,
     public bool IsPaused => _pauseGate.IsPaused;
 
     public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
+
+    public bool VisualPauseRequested
+    {
+        get
+        {
+            lock (_visualPauseLock)
+            {
+                return _visualPauseRequested;
+            }
+        }
+    }
+
+    public string? VisualPauseReason
+    {
+        get
+        {
+            lock (_visualPauseLock)
+            {
+                return _visualPauseReason;
+            }
+        }
+    }
 
     public void Pause()
     {
@@ -64,6 +94,34 @@ public sealed class WindowsDrawingExecutor : IDrawingExecutor, IPauseController,
                 Volatile.Read(ref _activeTotal),
                 Volatile.Read(ref _activeStarted),
                 "그리기를 재개합니다.");
+        }
+    }
+
+    public void RequestVisualPause(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        lock (_visualPauseLock)
+        {
+            _visualPauseRequested = true;
+            _visualPauseReason = reason;
+        }
+
+        Pause();
+    }
+
+    public void ClearVisualPause()
+    {
+        var shouldResume = false;
+        lock (_visualPauseLock)
+        {
+            shouldResume = _visualPauseRequested;
+            _visualPauseRequested = false;
+            _visualPauseReason = null;
+        }
+
+        if (shouldResume)
+        {
+            Resume();
         }
     }
 

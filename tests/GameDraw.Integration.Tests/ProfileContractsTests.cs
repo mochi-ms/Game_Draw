@@ -33,4 +33,23 @@ public sealed class ProfileContractsTests
         Assert.False(result.IsValid);
         Assert.True(result.Errors.Count >= 2);
     }
+
+    [Fact]
+    public void VisualVerificationProfileRejectsUnsafeThresholds()
+    {
+        var profile = GameProfile.CreateDefault() with
+        {
+            VisualVerification = new VisualVerificationProfile
+            {
+                MinimumConfidence = 1.5d,
+                ConsecutiveFailuresBeforePause = 0
+            }
+        };
+
+        var result = profile.Validate();
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("confidence", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Errors, error => error.Contains("consecutive", StringComparison.OrdinalIgnoreCase));
+    }
 }
