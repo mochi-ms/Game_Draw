@@ -40,6 +40,7 @@ public sealed record PreparedDrawing(
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
         $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}" +
+        (RenderStyle == DrawingRenderStyle.AutoColor ? " · HEX 자동" : string.Empty) +
         (SubjectFocus.BackgroundRemoved ? " · 배경 제거" : string.Empty) +
         (FacePriorityApplied ? " · 얼굴 특징 우선" : string.Empty);
 
@@ -398,7 +399,10 @@ public sealed class DrawingSessionController : IDisposable
         });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
-        var preferredBrushSize = prepared.RenderStyle == DrawingRenderStyle.LineArt ||
+        // Exact-color raster modes need the smallest calibrated brush as well;
+        // a wider default brush overwrites adjacent rows and destroys the
+        // quantized preview even when every HEX value is correct.
+        var preferredBrushSize = prepared.RenderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.AutoColor ||
             prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
             ? PodiumsProfileSettings.ReadControlLayout(CurrentProfile).MinimumBrushSizePixels
             : (int?)null;

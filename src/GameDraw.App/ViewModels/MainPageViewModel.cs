@@ -74,6 +74,9 @@ public partial class MainPageViewModel : ObservableObject
     public partial bool IsProfileCalibrated { get; set; }
 
     [ObservableProperty]
+    public partial bool IsHexColorCalibrated { get; set; }
+
+    [ObservableProperty]
     public partial bool IsCalibrating { get; set; }
 
     [ObservableProperty]
@@ -102,7 +105,7 @@ public partial class MainPageViewModel : ObservableObject
     public bool CanChangeImage => !IsBusy &&
         Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
 
-    public bool CanStart => HasImage && IsProfileCalibrated && !IsBusy && !IsCalibrating &&
+    public bool CanStart => HasImage && IsProfileCalibrated && IsHexColorCalibrated && !IsBusy && !IsCalibrating &&
         Stage is WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed;
 
     public bool CanPause => Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
@@ -114,7 +117,7 @@ public partial class MainPageViewModel : ObservableObject
     public string ModeDescription => SelectedMode switch
     {
         "픽셀 점찍기" => "픽셀마다 점을 찍습니다. 가장 정확하지만 실행 시간이 가장 깁니다.",
-        "가로 스캔라인" => "같은 색의 가로 구간을 선으로 묶습니다. 대부분의 이미지에 빠르고 정확합니다.",
+        "원본 색상 재현" or "가로 스캔라인" => "원본을 팔레트 색상으로 줄인 뒤 같은 색의 가로 구간을 모두 채웁니다. 자동 채색에 가장 정확한 권장 모드입니다.",
         "세로 스캔라인" => "세로 방향이 긴 그림을 선으로 묶어 그립니다.",
         "클린 펜 스트로크" => "선의 중심을 얇게 정돈하고 갈림점 사이를 한 번의 연속 획으로 그립니다. 검정 선화에 권장합니다.",
         "윤곽선" => "색 영역의 테두리만 그립니다. 선화와 로고에 적합합니다.",
@@ -125,7 +128,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public string RenderStyleDescription => SelectedRenderStyle == "검정 선화"
         ? "색을 채우지 않고 원본의 경계만 검은 선으로 그립니다."
-        : "원본 색상을 자동으로 줄이고 HEX 색상을 바꾸면서 채색합니다.";
+        : "원본 색상을 자동 팔레트로 줄이고, 색상마다 Podiums HEX 입력란에 #RRGGBB 값을 자동 입력해 채색합니다.";
 
     public string SpeedDescription => SelectedSpeed switch
     {
@@ -134,9 +137,15 @@ public partial class MainPageViewModel : ObservableObject
         _ => "2× · 속도와 입력 안정성의 권장 균형입니다."
     };
 
-    public string ProfileStatusLabel => IsProfileCalibrated
-        ? "캘리브레이션 저장됨"
-        : "캘리브레이션 필요";
+    public string ProfileStatusLabel => !IsProfileCalibrated
+        ? "캔버스 연결 필요"
+        : IsHexColorCalibrated
+            ? "캔버스 · HEX 자동 입력 준비됨"
+            : "HEX 입력 위치 설정 필요";
+
+    public string ColorAutomationStatusLabel => IsHexColorCalibrated
+        ? "색상마다 HEX 값을 자동 입력하고 Enter로 적용합니다."
+        : "도구·HEX 위치 설정에서 HEX 입력란을 한 번 지정해야 합니다.";
 
     public bool IsExecutionPanelVisible =>
         IsExecutionPanelOpen || Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
@@ -225,6 +234,13 @@ public partial class MainPageViewModel : ObservableObject
         OnPropertyChanged(nameof(ProfileStatusLabel));
     }
 
+    partial void OnIsHexColorCalibratedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ProfileStatusLabel));
+        OnPropertyChanged(nameof(ColorAutomationStatusLabel));
+    }
+
     partial void OnSelectedModeChanged(string value)
     {
         OnPropertyChanged(nameof(ModeDescription));
@@ -233,6 +249,14 @@ public partial class MainPageViewModel : ObservableObject
     partial void OnSelectedRenderStyleChanged(string value)
     {
         OnPropertyChanged(nameof(RenderStyleDescription));
+        if (value == "자동 채색" && SelectedMode == "클린 펜 스트로크")
+        {
+            SelectedMode = "원본 색상 재현";
+        }
+        else if (value == "검정 선화" && SelectedMode == "원본 색상 재현")
+        {
+            SelectedMode = "클린 펜 스트로크";
+        }
     }
 
     partial void OnSelectedSpeedChanged(string value)
@@ -272,10 +296,11 @@ public partial class MainPageViewModel : ObservableObject
         IsBusy = false;
     }
 
-    public void SetProfileState(string name, bool calibrated)
+    public void SetProfileState(string name, bool calibrated, bool hexColorCalibrated)
     {
         ProfileName = name;
         IsProfileCalibrated = calibrated;
+        IsHexColorCalibrated = hexColorCalibrated;
     }
 
     public void SetExecutionState(DrawingExecutionState state, string message)

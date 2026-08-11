@@ -388,7 +388,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     Click="FullProfileSetup_Click"
-                                    Content="도구 재설정"
+                                    Content="도구·HEX 위치 설정"
                                     Padding="14,8" />
                             </Grid>
                             <Grid ColumnSpacing="8">
@@ -415,7 +415,7 @@
                             </Grid>
                             <TextBlock
                                 x:Name="CalibrationHint"
-                                Text="흰 캔버스는 박스로 한 번 드래그합니다. 도구 재설정은 연필·색상 위치가 바뀐 경우에만 사용하세요."
+                                Text="자동 채색은 저장된 HEX 입력란을 클릭해 색 값을 직접 바꿉니다. 위치가 바뀌었으면 도구·HEX 위치 설정을 다시 진행하세요."
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border
@@ -475,7 +475,7 @@
                                     HorizontalAlignment="Stretch">
                                     <x:String>자동 추천</x:String>
                                     <x:String>픽셀 점찍기</x:String>
-                                    <x:String>가로 스캔라인</x:String>
+                                    <x:String>원본 색상 재현</x:String>
                                     <x:String>세로 스캔라인</x:String>
                                     <x:String>클린 펜 스트로크</x:String>
                                     <x:String>윤곽선</x:String>
@@ -648,7 +648,7 @@
                                     <x:String>자동 추천</x:String>
                                     <x:String>클린 펜 스트로크</x:String>
                                     <x:String>픽셀 점찍기</x:String>
-                                    <x:String>가로 스캔라인</x:String>
+                                    <x:String>원본 색상 재현</x:String>
                                     <x:String>세로 스캔라인</x:String>
                                     <x:String>윤곽선</x:String>
                                     <x:String>면 채우기</x:String>
@@ -689,9 +689,10 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
-                                <Button Grid.Column="1" Click="FullProfileSetup_Click" Content="도구 위치 재설정" HorizontalAlignment="Stretch" Padding="12,10" />
+                                <Button Grid.Column="1" Click="FullProfileSetup_Click" Content="도구·HEX 위치 설정" HorizontalAlignment="Stretch" Padding="12,10" />
                             </Grid>
-                            <TextBlock Text="영역 드래그는 흰 그림판만 박스로 지정합니다. 도구 위치가 바뀐 경우에만 재설정을 사용하세요." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.ColorAutomationStatusLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource PrimaryBrush}" FontWeight="SemiBold" />
+                            <TextBlock Text="영역 드래그는 흰 그림판만 지정합니다. 도구·HEX 설정 마지막 단계에서 사진에 보이는 HEX 입력칸 가운데를 가리키고 F6을 누릅니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
                                 <StackPanel Spacing="8">
                                     <TextBlock Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}" TextWrapping="Wrap" />

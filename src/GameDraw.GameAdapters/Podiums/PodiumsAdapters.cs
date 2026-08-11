@@ -9,6 +9,10 @@ namespace GameDraw.GameAdapters.Podiums;
 
 public sealed class PodiumsColorAdapter : IColorAdapter
 {
+    private static readonly TimeSpan FocusSettleDelay = TimeSpan.FromMilliseconds(45);
+    private static readonly TimeSpan SelectionSettleDelay = TimeSpan.FromMilliseconds(20);
+    private static readonly TimeSpan CommitSettleDelay = TimeSpan.FromMilliseconds(55);
+
     public ColorAdapterKind Kind => ColorAdapterKind.HexInput;
 
     public string DisplayName => "Podiums HEX color input";
@@ -41,6 +45,7 @@ public sealed class PodiumsColorAdapter : IColorAdapter
         {
             await input.ClickAsync(context.Map(layout.HexInput), cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+            await Task.Delay(FocusSettleDelay, cancellationToken).ConfigureAwait(false);
             await input.KeyDownAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
             controlHeld = true;
             await input.KeyDownAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
@@ -49,9 +54,11 @@ public sealed class PodiumsColorAdapter : IColorAdapter
             aHeld = false;
             await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
             controlHeld = false;
+            await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
             await input.TypeTextAsync(color.ToHex(), cancellationToken).ConfigureAwait(false);
             await input.KeyDownAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
             await input.KeyUpAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(CommitSettleDelay, cancellationToken).ConfigureAwait(false);
 
             return new(true, $"Selected {color.ToHex()} in Podiums.");
         }
