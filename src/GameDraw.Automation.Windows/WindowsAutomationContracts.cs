@@ -24,6 +24,11 @@ public interface IWindowGeometryProvider
         CancellationToken cancellationToken = default);
 }
 
+public interface ICursorPositionProvider
+{
+    bool TryGetScreenPosition(out ScreenPoint point);
+}
+
 public sealed record TargetWindowGeometry(
     TargetWindowSnapshot Snapshot,
     ScreenRect ClientBounds,
@@ -51,6 +56,8 @@ public interface IWindowsHotkeyService
     event EventHandler<HotkeyPressedEventArgs>? HotkeyPressed;
 
     void Register(InputKey key);
+
+    void Unregister(InputKey key);
 
     void UnregisterAll();
 }

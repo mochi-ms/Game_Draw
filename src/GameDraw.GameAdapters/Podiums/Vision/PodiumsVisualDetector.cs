@@ -52,22 +52,20 @@ public sealed record PodiumsVisualTemplates
 {
     public VisualAnchorDefinition? PencilTool { get; init; }
 
-    public VisualAnchorDefinition? BrushTool { get; init; }
+    public VisualAnchorDefinition? EraserTool { get; init; }
 
     public VisualAnchorDefinition? FillTool { get; init; }
 
     public VisualAnchorDefinition? HexInput { get; init; }
 
-    public VisualAnchorDefinition? HexApply { get; init; }
-
     public IReadOnlyList<VisualAnchorDefinition> RequiredAnchors
-        => new[] { PencilTool, BrushTool, HexInput, HexApply }
+        => new[] { PencilTool, HexInput }
             .Where(anchor => anchor is not null)
             .Cast<VisualAnchorDefinition>()
             .ToArray();
 
     public IReadOnlyList<VisualAnchorDefinition> OptionalAnchors
-        => new[] { FillTool }
+        => new[] { EraserTool, FillTool }
             .Where(anchor => anchor is not null)
             .Cast<VisualAnchorDefinition>()
             .ToArray();

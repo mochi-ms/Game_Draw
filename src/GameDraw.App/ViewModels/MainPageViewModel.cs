@@ -1,6 +1,7 @@
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GameDraw.Core.Execution;
 using GameDraw.Core.Presentation;
 
 namespace GameDraw_App.ViewModels;
@@ -52,20 +53,52 @@ public partial class MainPageViewModel : ObservableObject
     public partial bool IsExecutionPanelOpen { get; set; }
 
     [ObservableProperty]
-    public partial bool IsExecutionPanelPinned { get; set; } = true;
+    public partial bool IsReducedMotion { get; set; }
 
     [ObservableProperty]
-    public partial bool IsReducedMotion { get; set; }
+    public partial bool IsProfileCalibrated { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCalibrating { get; set; }
+
+    [ObservableProperty]
+    public partial string CalibrationMessage { get; set; } = "Roblox Podiums 창을 찾은 뒤 F6으로 좌표를 기록합니다.";
+
+    [ObservableProperty]
+    public partial string PlanSummary { get; set; } = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";
+
+    [ObservableProperty]
+    public partial double MaximumColors { get; set; } = 128d;
+
+    [ObservableProperty]
+    public partial double LogicalWidth { get; set; } = 512d;
+
+    [ObservableProperty]
+    public partial double LogicalHeight { get; set; } = 512d;
 
     public bool HasImage => !string.IsNullOrWhiteSpace(SelectedImagePath);
 
-    public bool CanStart => HasImage && (Stage is WorkspaceStage.Configure or WorkspaceStage.Ready);
+    public bool CanPrepare => HasImage && !IsBusy && !IsCalibrating &&
+        Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
+
+    public bool CanClearImage => HasImage && !IsBusy &&
+        Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
+
+    public bool CanChangeImage => !IsBusy &&
+        Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
+
+    public bool CanStart => HasImage && IsProfileCalibrated && !IsBusy && !IsCalibrating &&
+        (Stage is WorkspaceStage.Configure or WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed);
 
     public bool CanPause => Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
 
     public bool CanStop => CanPause;
 
     public bool IsPaused => Stage == WorkspaceStage.Paused;
+
+    public string ProfileStatusLabel => IsProfileCalibrated
+        ? "캘리브레이션 저장됨"
+        : "캘리브레이션 필요";
 
     public bool IsExecutionPanelVisible =>
         IsExecutionPanelOpen || Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
@@ -94,6 +127,8 @@ public partial class MainPageViewModel : ObservableObject
     partial void OnSelectedImagePathChanged(string? value)
     {
         OnPropertyChanged(nameof(HasImage));
+        OnPropertyChanged(nameof(CanPrepare));
+        OnPropertyChanged(nameof(CanClearImage));
         OnPropertyChanged(nameof(CanStart));
     }
 
@@ -101,6 +136,9 @@ public partial class MainPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(StageLabel));
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanPrepare));
+        OnPropertyChanged(nameof(CanClearImage));
+        OnPropertyChanged(nameof(CanChangeImage));
         OnPropertyChanged(nameof(CanPause));
         OnPropertyChanged(nameof(CanStop));
         OnPropertyChanged(nameof(IsPaused));
@@ -122,6 +160,26 @@ public partial class MainPageViewModel : ObservableObject
         OnPropertyChanged(nameof(IsExecutionPanelVisible));
     }
 
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanPrepare));
+        OnPropertyChanged(nameof(CanClearImage));
+        OnPropertyChanged(nameof(CanChangeImage));
+        OnPropertyChanged(nameof(CanStart));
+    }
+
+    partial void OnIsCalibratingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanPrepare));
+        OnPropertyChanged(nameof(CanStart));
+    }
+
+    partial void OnIsProfileCalibratedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ProfileStatusLabel));
+    }
+
     public void SetImage(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -135,6 +193,7 @@ public partial class MainPageViewModel : ObservableObject
         StatusMessage = $"'{SelectedImageName}'을(를) 불러왔습니다. 캔버스와 그리기 모드를 설정하세요.";
         Progress = 0;
         IsExecutionPanelOpen = false;
+        PlanSummary = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";
     }
 
     public void SetLayoutWidth(double width)
@@ -151,6 +210,27 @@ public partial class MainPageViewModel : ObservableObject
     public void EndLoading()
     {
         IsBusy = false;
+    }
+
+    public void SetProfileState(string name, bool calibrated)
+    {
+        ProfileName = name;
+        IsProfileCalibrated = calibrated;
+    }
+
+    public void SetExecutionState(DrawingExecutionState state, string message)
+    {
+        Stage = state switch
+        {
+            DrawingExecutionState.Preparing => WorkspaceStage.Ready,
+            DrawingExecutionState.Running => WorkspaceStage.Running,
+            DrawingExecutionState.Paused => WorkspaceStage.Paused,
+            DrawingExecutionState.Completed => WorkspaceStage.Completed,
+            DrawingExecutionState.Stopping => HasImage ? WorkspaceStage.Ready : WorkspaceStage.SelectImage,
+            DrawingExecutionState.Failed => WorkspaceStage.Failed,
+            _ => Stage
+        };
+        StatusMessage = message;
     }
 
     public void SetProgress(double progress, string? message = null)
@@ -182,12 +262,6 @@ public partial class MainPageViewModel : ObservableObject
     private void ToggleExecutionPanel()
     {
         IsExecutionPanelOpen = !IsExecutionPanelOpen;
-    }
-
-    [RelayCommand]
-    private void ToggleExecutionPanelPin()
-    {
-        IsExecutionPanelPinned = !IsExecutionPanelPinned;
     }
 
     [RelayCommand]

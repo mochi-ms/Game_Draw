@@ -36,6 +36,10 @@ Implement expanded/medium/compact layouts, dark mode, loading and progress state
 
 Add window capture, template/anchor matching, canvas detection, tool detection, confidence thresholds, and automatic pause/recalibration on drift.
 
+## Phase 7.5 — integrated safety and Podiums reality pass
+
+Connect image processing, planning, profile persistence, Podiums controls, Windows execution, global safety hotkeys, live visual checks, and responsive UI into one runnable workflow. Correct the real Podiums eraser, vertical brush-size slider, and HEX-enter interaction. Require immediate input release on pause/stop and block input as soon as Roblox loses foreground focus.
+
 ## Phase 8 — adapter SDK and second game
 
 Add profile import/export, capability-based adapters, migration, and a second drawing game without changing the core planner or executor.

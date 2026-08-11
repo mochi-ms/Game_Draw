@@ -14,9 +14,10 @@ public enum InputKey
     Control = 0,
     Enter = 1,
     Escape = 2,
-    F7 = 3,
-    F8 = 4,
-    A = 5
+    F6 = 3,
+    F7 = 4,
+    F8 = 5,
+    A = 6
 }
 
 public interface IInputController

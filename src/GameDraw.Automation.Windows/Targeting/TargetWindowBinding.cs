@@ -68,6 +68,22 @@ public sealed class TargetWindowBinding
         }
     }
 
+    public ScreenPoint MapClient(GameDraw.Core.Geometry.NormalizedPoint point)
+    {
+        if (!point.IsWithinUnitSquare)
+        {
+            throw new ArgumentOutOfRangeException(nameof(point), "클라이언트 좌표는 0~1 범위여야 합니다.");
+        }
+
+        lock (_lock)
+        {
+            var bounds = _geometry.ClientBounds;
+            var x = bounds.X + (int)Math.Round(point.X * Math.Max(0, bounds.Width - 1), MidpointRounding.AwayFromZero);
+            var y = bounds.Y + (int)Math.Round(point.Y * Math.Max(0, bounds.Height - 1), MidpointRounding.AwayFromZero);
+            return new ScreenPoint(x, y);
+        }
+    }
+
     public async ValueTask<bool> RefreshAsync(CancellationToken cancellationToken = default)
     {
         var refreshed = await _geometryProvider.GetGeometryAsync(Handle, cancellationToken).ConfigureAwait(false);

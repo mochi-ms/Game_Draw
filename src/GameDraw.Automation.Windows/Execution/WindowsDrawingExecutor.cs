@@ -17,7 +17,7 @@ public sealed class WindowsDrawingExecutor :
     private readonly TargetWindowBinding _binding;
     private readonly ITargetVerifier _targetVerifier;
     private readonly PauseGate _pauseGate = new();
-    private readonly object _visualPauseLock = new();
+    private readonly object _pauseStateLock = new();
     private int _running;
     private int _stopRequested;
     private CancellationTokenSource? _activeCancellation;
@@ -27,6 +27,8 @@ public sealed class WindowsDrawingExecutor :
     private int _activeTotal;
     private bool _visualPauseRequested;
     private string? _visualPauseReason;
+    private bool _manualPauseRequested;
+    private long _inputReleaseEpoch;
     private bool _disposed;
 
     public WindowsDrawingExecutor(
@@ -49,7 +51,7 @@ public sealed class WindowsDrawingExecutor :
     {
         get
         {
-            lock (_visualPauseLock)
+            lock (_pauseStateLock)
             {
                 return _visualPauseRequested;
             }
@@ -60,7 +62,7 @@ public sealed class WindowsDrawingExecutor :
     {
         get
         {
-            lock (_visualPauseLock)
+            lock (_pauseStateLock)
             {
                 return _visualPauseReason;
             }
@@ -69,7 +71,18 @@ public sealed class WindowsDrawingExecutor :
 
     public void Pause()
     {
+        lock (_pauseStateLock)
+        {
+            _manualPauseRequested = true;
+        }
+
+        EnterPausedState("일시 정지되었습니다.");
+    }
+
+    private void EnterPausedState(string message)
+    {
         _pauseGate.Pause();
+        ReleaseInputStateBestEffort();
         if (Volatile.Read(ref _running) != 0 && _activeProgress is not null)
         {
             Report(
@@ -78,11 +91,25 @@ public sealed class WindowsDrawingExecutor :
                 Volatile.Read(ref _activeCompleted),
                 Volatile.Read(ref _activeTotal),
                 Volatile.Read(ref _activeStarted),
-                "일시 정지되었습니다.");
+                message);
         }
     }
 
     public void Resume()
+    {
+        lock (_pauseStateLock)
+        {
+            _manualPauseRequested = false;
+            if (_visualPauseRequested)
+            {
+                return;
+            }
+        }
+
+        ResumeCore();
+    }
+
+    private void ResumeCore()
     {
         _pauseGate.Resume();
         if (Volatile.Read(ref _running) != 0 && _activeProgress is not null)
@@ -100,28 +127,29 @@ public sealed class WindowsDrawingExecutor :
     public void RequestVisualPause(string reason)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-        lock (_visualPauseLock)
+        lock (_pauseStateLock)
         {
             _visualPauseRequested = true;
             _visualPauseReason = reason;
         }
 
-        Pause();
+        EnterPausedState($"시각 안전 검사로 일시 정지했습니다. {reason}");
     }
 
     public void ClearVisualPause()
     {
         var shouldResume = false;
-        lock (_visualPauseLock)
+        lock (_pauseStateLock)
         {
             shouldResume = _visualPauseRequested;
             _visualPauseRequested = false;
             _visualPauseReason = null;
+            shouldResume &= !_manualPauseRequested;
         }
 
         if (shouldResume)
         {
-            Resume();
+            ResumeCore();
         }
     }
 
@@ -132,8 +160,7 @@ public sealed class WindowsDrawingExecutor :
         try
         {
             _activeCancellation?.Cancel();
-            _input.ReleaseAllButtonsAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
-            _input.ReleaseAllKeysAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            ReleaseInputStateBestEffort();
         }
         catch
         {
@@ -180,9 +207,22 @@ public sealed class WindowsDrawingExecutor :
             }
 
             Report(progress, DrawingExecutionState.Running, completedStrokes, totalStrokes, started, "그리기를 시작합니다.");
+            if (options.Hooks is not null)
+            {
+                await options.Hooks.BeforePlanAsync(plan, token).ConfigureAwait(false);
+            }
+
             for (var groupIndex = 0; groupIndex < plan.ColorGroups.Count; groupIndex++)
             {
                 var group = plan.ColorGroups[groupIndex];
+                await _pauseGate.WaitAsync(token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                await EnsureTargetAsync(plan, options, token).ConfigureAwait(false);
+                if (options.Hooks is not null)
+                {
+                    await options.Hooks.BeforeColorGroupAsync(group.Color, groupIndex, token).ConfigureAwait(false);
+                }
+
                 for (var strokeIndex = 0; strokeIndex < group.Strokes.Count; strokeIndex++)
                 {
                     await _pauseGate.WaitAsync(token).ConfigureAwait(false);
@@ -231,7 +271,13 @@ public sealed class WindowsDrawingExecutor :
             _activeStarted = 0;
             _activeCompleted = 0;
             _activeTotal = 0;
-            _pauseGate.Resume();
+            lock (_pauseStateLock)
+            {
+                if (!_manualPauseRequested && !_visualPauseRequested)
+                {
+                    _pauseGate.Resume();
+                }
+            }
             Interlocked.Exchange(ref _running, 0);
         }
     }
@@ -283,30 +329,46 @@ public sealed class WindowsDrawingExecutor :
             return;
         }
 
+        await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
         var first = _binding.Map(stroke.Points[0]);
         await _input.MoveToAsync(first, cancellationToken).ConfigureAwait(false);
         await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
         var buttonDown = true;
+        var releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
         try
         {
             var previous = stroke.Points[0];
             for (var index = 1; index < stroke.Points.Count; index++)
             {
-                await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
                 var next = stroke.Points[index];
                 await DelayForMovementAsync(previous, next, logicalSize, options, cancellationToken).ConfigureAwait(false);
+                await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+                if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
+                {
+                    await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+                    releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
+                }
+
                 await _input.MoveToAsync(_binding.Map(next), cancellationToken).ConfigureAwait(false);
                 previous = next;
             }
 
             if (stroke.IsClosed && stroke.Points.Count > 1)
             {
+                await DelayForMovementAsync(previous, stroke.Points[0], logicalSize, options, cancellationToken).ConfigureAwait(false);
                 await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                await DelayForMovementAsync(previous, stroke.Points[0], logicalSize, options, cancellationToken).ConfigureAwait(false);
+                await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+                if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
+                {
+                    await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+                    releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
+                }
+
                 await _input.MoveToAsync(_binding.Map(stroke.Points[0]), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -336,7 +398,7 @@ public sealed class WindowsDrawingExecutor :
         var x = (second.X - first.X) * logicalSize.Width;
         var y = (second.Y - first.Y) * logicalSize.Height;
         var logicalPixels = Math.Sqrt((x * x) + (y * y));
-        var seconds = logicalPixels / (500d * options.SpeedMultiplier);
+        var seconds = logicalPixels / (options.MovementPixelsPerSecond * options.SpeedMultiplier);
         if (seconds > 0d)
         {
             await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken).ConfigureAwait(false);
@@ -404,5 +466,35 @@ public sealed class WindowsDrawingExecutor :
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    private async ValueTask EnsureForegroundTargetAsync(
+        DrawingExecutionOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (!await _binding.RefreshAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("대상 창이 사라졌거나 클라이언트 좌표를 읽을 수 없습니다.");
+        }
+
+        if (options.RequireForegroundTarget && !_binding.Snapshot.IsForeground)
+        {
+            throw new InvalidOperationException("대상 창이 포그라운드가 아니므로 입력을 즉시 중단했습니다.");
+        }
+    }
+
+    private void ReleaseInputStateBestEffort()
+    {
+        Interlocked.Increment(ref _inputReleaseEpoch);
+        try
+        {
+            _input.ReleaseAllButtonsAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+            _input.ReleaseAllKeysAsync(CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Pause/stop callbacks must never throw. ExecuteAsync performs a
+            // final cleanup pass when control returns to the execution loop.
+        }
     }
 }

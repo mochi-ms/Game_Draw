@@ -12,6 +12,7 @@
     Drop="Page_Drop"
     Loaded="Page_Loaded"
     SizeChanged="Page_SizeChanged"
+    Unloaded="Page_Unloaded"
     mc:Ignorable="d">
 
     <Page.KeyboardAccelerators>
@@ -50,6 +51,8 @@
                         Foreground="{ThemeResource StrongTextBrush}" />
                     <TextBlock
                         Text="이미지를 게임 캔버스용 입력 동작으로 바꾸는 작업 공간"
+                        TextWrapping="Wrap"
+                        MaxLines="2"
                         Style="{ThemeResource MutedTextBlockStyle}" />
                 </StackPanel>
                 <StackPanel
@@ -134,18 +137,28 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
                             <StackPanel Spacing="3">
                                 <TextBlock Text="이미지 미리보기" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                 <TextBlock
                                     Text="원본 비율을 유지한 채 작업 영역에 표시합니다."
+                                    TextWrapping="Wrap"
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                             </StackPanel>
                             <Border
+                                x:Name="PreviewBadge"
+                                Grid.Column="1"
                                 HorizontalAlignment="Right"
                                 Background="{ThemeResource PreviewSurfaceBrush}"
                                 CornerRadius="10"
                                 Padding="10,6">
-                                <TextBlock Text="원본 미리보기" Style="{ThemeResource MutedTextBlockStyle}" />
+                                <TextBlock
+                                    x:Name="PreviewBadgeLabel"
+                                    Text="원본 미리보기"
+                                    Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>
                         </Grid>
 
@@ -200,6 +213,7 @@
                                 x:Name="SelectImageButton"
                                 Click="SelectImage_Click"
                                 Content="이미지 선택"
+                                IsEnabled="{x:Bind ViewModel.CanChangeImage, Mode=OneWay}"
                                 Padding="18,10"
                                 AutomationProperties.Name="이미지 파일 선택"
                                 AutomationProperties.HelpText="그릴 이미지 파일을 선택합니다." />
@@ -217,7 +231,7 @@
                                 Grid.Column="2"
                                 Command="{x:Bind ViewModel.ClearImageCommand}"
                                 Content="초기화"
-                                IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                IsEnabled="{x:Bind ViewModel.CanClearImage, Mode=OneWay}"
                                 Padding="16,10" />
                         </Grid>
                     </Grid>
@@ -242,11 +256,57 @@
                                 PlaceholderText="예: Podiums 화이트보드"
                                 Text="{x:Bind ViewModel.ProfileName, Mode=TwoWay}"
                                 AutomationProperties.Name="프로필 이름" />
-                            <Button Content="프로필 설정" IsEnabled="False" HorizontalAlignment="Stretch" />
                             <TextBlock
-                                Text="1단계에서는 기본 셸만 제공하며, 캘리브레이션은 다음 단계에서 연결됩니다."
+                                Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource PrimaryBrush}" />
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <NumberBox
+                                    Header="논리 폭"
+                                    Minimum="1"
+                                    Maximum="4096"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.LogicalWidth, Mode=TwoWay}" />
+                                <NumberBox
+                                    Grid.Column="1"
+                                    Header="논리 높이"
+                                    Minimum="1"
+                                    Maximum="4096"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.LogicalHeight, Mode=TwoWay}" />
+                            </Grid>
+                            <Button
+                                Click="ProfileSetup_Click"
+                                Content="Podiums 캘리브레이션"
+                                HorizontalAlignment="Stretch" />
+                            <TextBlock
+                                Text="캔버스와 연필·지우개·채우기·굵기 슬라이더·HEX 입력 위치를 F6으로 기록합니다."
                                 Style="{ThemeResource MutedTextBlockStyle}"
                                 TextWrapping="Wrap" />
+                            <Border
+                                Padding="14"
+                                Background="{ThemeResource PrimarySoftBrush}"
+                                CornerRadius="14"
+                                Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock
+                                        Text="캘리브레이션 진행 중"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource PrimaryBrush}" />
+                                    <TextBlock
+                                        Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}"
+                                        TextWrapping="Wrap"
+                                        Foreground="{ThemeResource StrongTextBrush}" />
+                                    <Button
+                                        Click="CancelCalibration_Click"
+                                        Content="캘리브레이션 취소"
+                                        HorizontalAlignment="Stretch" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
 
@@ -275,6 +335,18 @@
                                 Text="픽셀 점찍기와 선 기반 모드는 같은 DrawingPlan 계약으로 연결됩니다."
                                 Style="{ThemeResource MutedTextBlockStyle}"
                                 TextWrapping="Wrap" />
+                            <NumberBox
+                                Header="최대 색상 수"
+                                Minimum="2"
+                                Maximum="256"
+                                SmallChange="8"
+                                SpinButtonPlacementMode="Compact"
+                                Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}"
+                                AutomationProperties.Name="최대 색상 수" />
+                            <TextBlock
+                                Text="128색과 디더링이 기본이며 필요하면 256색까지 선택할 수 있습니다."
+                                Style="{ThemeResource MutedTextBlockStyle}"
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
@@ -297,9 +369,21 @@
                                 Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                             <TextBlock
-                                Text="이미지를 선택하고 프로필을 캘리브레이션하면 실행할 수 있습니다."
+                                Text="{x:Bind ViewModel.PlanSummary, Mode=OneWay}"
                                 Style="{ThemeResource MutedTextBlockStyle}"
                                 TextWrapping="Wrap" />
+                            <Button
+                                Click="PrepareDrawing_Click"
+                                Content="이미지 분석"
+                                IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="이미지 분석" />
+                            <Button
+                                Click="StartDrawing_Click"
+                                Content="Podiums에 그리기 시작"
+                                IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
+                                HorizontalAlignment="Stretch"
+                                AutomationProperties.Name="Podiums 자동 그리기 시작" />
                             <Button
                                 Command="{x:Bind ViewModel.ToggleExecutionPanelCommand}"
                                 Content="실행 패널 열기"
@@ -315,11 +399,10 @@
                                 Header="모션 줄이기"
                                 IsOn="{x:Bind ViewModel.IsReducedMotion, Mode=TwoWay}"
                                 AutomationProperties.Name="모션 줄이기" />
-                            <Button
-                                Command="{x:Bind ViewModel.ToggleExecutionPanelPinCommand}"
-                                Content="실행 패널 고정/해제"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="실행 패널 고정 또는 해제" />
+                            <TextBlock
+                                Text="실행 중에는 Roblox 위에 별도의 상태 창이 표시되며 F7/F8로 제어합니다."
+                                Style="{ThemeResource MutedTextBlockStyle}"
+                                TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -369,6 +452,10 @@
             Visibility="{x:Bind ViewModel.IsExecutionPanelVisible, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
             <StackPanel Spacing="12">
                 <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
                     <StackPanel Spacing="2">
                         <TextBlock Text="실행 패널" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                         <TextBlock
@@ -388,21 +475,16 @@
                     AutomationProperties.Name="실행 패널 진행률" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button
-                        Command="{x:Bind ViewModel.PauseOrResumeExecutionCommand}"
+                        Click="PauseResume_Click"
                         Content="일시 정지/재개"
                         IsEnabled="{x:Bind ViewModel.CanPause, Mode=OneWay}"
                         AutomationProperties.Name="실행 일시 정지 또는 재개" />
                     <Button
-                        Command="{x:Bind ViewModel.StopExecutionCommand}"
+                        Click="StopDrawing_Click"
                         Content="중지"
                         IsEnabled="{x:Bind ViewModel.CanStop, Mode=OneWay}"
                         AutomationProperties.Name="실행 중지" />
                 </StackPanel>
-                <Button
-                    Command="{x:Bind ViewModel.ToggleExecutionPanelPinCommand}"
-                    Content="패널 고정/해제"
-                    HorizontalAlignment="Stretch"
-                    AutomationProperties.Name="실행 패널 고정 또는 해제" />
             </StackPanel>
         </Border>
     </Grid>

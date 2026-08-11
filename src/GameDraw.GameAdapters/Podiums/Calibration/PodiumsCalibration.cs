@@ -8,11 +8,11 @@ public enum PodiumsCalibrationStep
     CaptureCanvasTopLeft = 0,
     CaptureCanvasBottomRight = 1,
     CapturePencilTool = 2,
-    CaptureBrushTool = 3,
+    CaptureEraserTool = 3,
     CaptureFillTool = 4,
-    CaptureBrushSize = 5,
-    CaptureHexInput = 6,
-    CaptureHexApply = 7,
+    CaptureBrushSizeMinimum = 5,
+    CaptureBrushSizeMaximum = 6,
+    CaptureHexInput = 7,
     Completed = 8,
     Cancelled = 9
 }
@@ -23,9 +23,9 @@ public sealed record PodiumsCalibrationOptions
     /// Logical image dimensions are supplied independently from the physical
     /// window size. They are not restricted to 32x32 or 48x48.
     /// </summary>
-    public int LogicalWidth { get; init; } = 64;
+    public int LogicalWidth { get; init; } = 512;
 
-    public int LogicalHeight { get; init; } = 64;
+    public int LogicalHeight { get; init; } = 512;
 
     public bool RequireControls { get; init; } = true;
 
@@ -127,12 +127,12 @@ public sealed class PodiumsCalibrationSession
 
             case PodiumsCalibrationStep.CapturePencilTool:
                 _controls = _controls with { PencilTool = point };
-                Advance(PodiumsCalibrationStep.CaptureBrushTool, "Capture the Podiums brush tool.");
+                Advance(PodiumsCalibrationStep.CaptureEraserTool, "Capture the Podiums eraser tool.");
                 break;
 
-            case PodiumsCalibrationStep.CaptureBrushTool:
-                _controls = _controls with { BrushTool = point };
-                AdvanceAfterBrush();
+            case PodiumsCalibrationStep.CaptureEraserTool:
+                _controls = _controls with { EraserTool = point };
+                AdvanceAfterEraser();
                 break;
 
             case PodiumsCalibrationStep.CaptureFillTool:
@@ -140,22 +140,25 @@ public sealed class PodiumsCalibrationSession
                 AdvanceAfterFill();
                 break;
 
-            case PodiumsCalibrationStep.CaptureBrushSize:
+            case PodiumsCalibrationStep.CaptureBrushSizeMinimum:
                 _controls = _controls with
                 {
-                    BrushSizeControl = point,
+                    BrushSizeMinimum = point
+                };
+                Advance(PodiumsCalibrationStep.CaptureBrushSizeMaximum, "Capture the maximum end of the Podiums brush-size slider.");
+                break;
+
+            case PodiumsCalibrationStep.CaptureBrushSizeMaximum:
+                _controls = _controls with
+                {
+                    BrushSizeMaximum = point,
                     HasBrushSizeControl = true
                 };
                 AdvanceAfterBrushSize();
                 break;
 
             case PodiumsCalibrationStep.CaptureHexInput:
-                _controls = _controls with { HexInput = point };
-                Advance(PodiumsCalibrationStep.CaptureHexApply, "Capture the Podiums HEX apply button.");
-                break;
-
-            case PodiumsCalibrationStep.CaptureHexApply:
-                _controls = _controls with { HexApply = point, HasColorControls = true };
+                _controls = _controls with { HexInput = point, HasColorControls = true };
                 CompleteState();
                 break;
         }
@@ -262,7 +265,7 @@ public sealed class PodiumsCalibrationSession
         Advance(PodiumsCalibrationStep.CapturePencilTool, "Capture the Podiums pencil tool.");
     }
 
-    private void AdvanceAfterBrush()
+    private void AdvanceAfterEraser()
     {
         if (_options.IncludeFillTool)
         {
@@ -277,7 +280,7 @@ public sealed class PodiumsCalibrationSession
     {
         if (_options.IncludeBrushSize)
         {
-            Advance(PodiumsCalibrationStep.CaptureBrushSize, "Capture the Podiums brush-size control.");
+            Advance(PodiumsCalibrationStep.CaptureBrushSizeMinimum, "Capture the minimum end of the Podiums brush-size slider.");
             return;
         }
 
@@ -319,4 +322,3 @@ public sealed class PodiumsCalibrationSession
             Array.Empty<string>(),
             error);
 }
-

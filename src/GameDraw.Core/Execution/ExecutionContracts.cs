@@ -1,4 +1,5 @@
 using GameDraw.Core.Drawing;
+using GameDraw.Core.Colors;
 using GameDraw.Core.Models;
 using GameDraw.Core.Targeting;
 
@@ -19,17 +20,26 @@ public sealed record DrawingExecutionOptions
 {
     public double SpeedMultiplier { get; init; } = 1d;
 
+    public double MovementPixelsPerSecond { get; init; } = 500d;
+
     public int InterStrokeDelayMilliseconds { get; init; } = 25;
 
     public int ColorChangeDelayMilliseconds { get; init; } = 100;
 
     public bool RequireForegroundTarget { get; init; } = true;
 
+    public IDrawingExecutionHooks? Hooks { get; init; }
+
     public void Validate()
     {
         if (!double.IsFinite(SpeedMultiplier) || SpeedMultiplier <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(SpeedMultiplier), "Speed multiplier must be finite and greater than zero.");
+        }
+
+        if (!double.IsFinite(MovementPixelsPerSecond) || MovementPixelsPerSecond <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MovementPixelsPerSecond), "Movement speed must be finite and greater than zero.");
         }
 
         if (InterStrokeDelayMilliseconds < 0)
@@ -42,6 +52,23 @@ public sealed record DrawingExecutionOptions
             throw new ArgumentOutOfRangeException(nameof(ColorChangeDelayMilliseconds));
         }
     }
+}
+
+/// <summary>
+/// Target-specific actions that must run around a generic drawing plan, such
+/// as selecting a game tool or applying the next color. Implementations must
+/// throw when the target cannot be prepared safely.
+/// </summary>
+public interface IDrawingExecutionHooks
+{
+    ValueTask BeforePlanAsync(
+        DrawingPlan plan,
+        CancellationToken cancellationToken = default);
+
+    ValueTask BeforeColorGroupAsync(
+        RgbColor color,
+        int colorGroupIndex,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record DrawingProgress(

@@ -9,7 +9,7 @@ namespace GameDraw.GameAdapters.Podiums;
 public enum PodiumsToolKind
 {
     Pencil = 0,
-    Brush = 1,
+    Eraser = 1,
     Fill = 2
 }
 
@@ -30,17 +30,21 @@ public sealed record PodiumsControlLayout
 
     public NormalizedPoint PencilTool { get; init; }
 
-    public NormalizedPoint BrushTool { get; init; }
+    public NormalizedPoint EraserTool { get; init; }
 
     public NormalizedPoint FillTool { get; init; }
 
-    public NormalizedPoint BrushSizeControl { get; init; }
+    public NormalizedPoint BrushSizeMinimum { get; init; }
+
+    public NormalizedPoint BrushSizeMaximum { get; init; }
 
     public NormalizedPoint HexInput { get; init; }
 
-    public NormalizedPoint HexApply { get; init; }
+    public int MinimumBrushSizePixels { get; init; } = 1;
 
-    public int DefaultBrushSizePixels { get; init; } = 1;
+    public int MaximumBrushSizePixels { get; init; } = 50;
+
+    public int DefaultBrushSizePixels { get; init; } = 10;
 
     public static PodiumsControlLayout Unconfigured => new();
 
@@ -48,7 +52,7 @@ public sealed record PodiumsControlLayout
         => tool switch
         {
             PodiumsToolKind.Pencil => IsConfigured && PencilTool.IsWithinUnitSquare,
-            PodiumsToolKind.Brush => IsConfigured && BrushTool.IsWithinUnitSquare,
+            PodiumsToolKind.Eraser => IsConfigured && EraserTool.IsWithinUnitSquare,
             PodiumsToolKind.Fill => IsConfigured && HasFillTool && FillTool.IsWithinUnitSquare,
             _ => false
         };
@@ -66,9 +70,9 @@ public sealed record PodiumsControlLayout
             errors.Add("Podiums pencil tool coordinate is outside the target client.");
         }
 
-        if (!BrushTool.IsWithinUnitSquare)
+        if (!EraserTool.IsWithinUnitSquare)
         {
-            errors.Add("Podiums brush tool coordinate is outside the target client.");
+            errors.Add("Podiums eraser tool coordinate is outside the target client.");
         }
 
         if (HasFillTool && !FillTool.IsWithinUnitSquare)
@@ -76,20 +80,23 @@ public sealed record PodiumsControlLayout
             errors.Add("Podiums fill tool coordinate is outside the target client.");
         }
 
-        if (HasBrushSizeControl && !BrushSizeControl.IsWithinUnitSquare)
+        if (HasBrushSizeControl &&
+            (!BrushSizeMinimum.IsWithinUnitSquare || !BrushSizeMaximum.IsWithinUnitSquare))
         {
-            errors.Add("Podiums brush-size control coordinate is outside the target client.");
+            errors.Add("Podiums brush-size slider endpoints are outside the target client.");
         }
 
-        if (HasColorControls &&
-            (!HexInput.IsWithinUnitSquare || !HexApply.IsWithinUnitSquare))
+        if (HasColorControls && !HexInput.IsWithinUnitSquare)
         {
-            errors.Add("Podiums HEX color control coordinates are outside the target client.");
+            errors.Add("Podiums HEX color input coordinate is outside the target client.");
         }
 
-        if (DefaultBrushSizePixels <= 0)
+        if (MinimumBrushSizePixels <= 0 ||
+            MaximumBrushSizePixels < MinimumBrushSizePixels ||
+            DefaultBrushSizePixels < MinimumBrushSizePixels ||
+            DefaultBrushSizePixels > MaximumBrushSizePixels)
         {
-            errors.Add("Podiums default brush size must be greater than zero.");
+            errors.Add("Podiums brush-size range or default value is invalid.");
         }
 
         return errors;
@@ -108,13 +115,17 @@ public static class PodiumsProfileSettings
     private const string FillToolKey = "podiums.controls.fill";
     private const string BrushSizeControlKey = "podiums.controls.brush-size";
     private const string BrushSizeValueKey = "podiums.brush.size";
+    private const string BrushSizeMinimumValueKey = "podiums.brush.minimum";
+    private const string BrushSizeMaximumValueKey = "podiums.brush.maximum";
 
     private const string PencilKey = "podiums.tool.pencil";
-    private const string BrushKey = "podiums.tool.brush";
+    private const string EraserKey = "podiums.tool.eraser";
+    private const string LegacyBrushKey = "podiums.tool.brush";
     private const string FillKey = "podiums.tool.fill";
-    private const string BrushSizeKey = "podiums.tool.brush-size";
+    private const string BrushSizeMinimumKey = "podiums.tool.brush-size-minimum";
+    private const string BrushSizeMaximumKey = "podiums.tool.brush-size-maximum";
+    private const string LegacyBrushSizeKey = "podiums.tool.brush-size";
     private const string HexInputKey = "podiums.color.hex";
-    private const string HexApplyKey = "podiums.color.apply";
 
     public static PodiumsControlLayout ReadControlLayout(GameProfile profile)
     {
@@ -132,12 +143,14 @@ public static class PodiumsProfileSettings
             HasFillTool = ReadBoolean(values, FillToolKey),
             HasBrushSizeControl = ReadBoolean(values, BrushSizeControlKey),
             PencilTool = ReadPoint(values, PencilKey),
-            BrushTool = ReadPoint(values, BrushKey),
+            EraserTool = ReadPoint(values, EraserKey, LegacyBrushKey),
             FillTool = ReadPoint(values, FillKey),
-            BrushSizeControl = ReadPoint(values, BrushSizeKey),
+            BrushSizeMinimum = ReadPoint(values, BrushSizeMinimumKey, LegacyBrushSizeKey),
+            BrushSizeMaximum = ReadPoint(values, BrushSizeMaximumKey, LegacyBrushSizeKey),
             HexInput = ReadPoint(values, HexInputKey),
-            HexApply = ReadPoint(values, HexApplyKey),
-            DefaultBrushSizePixels = ReadPositiveInt(values, BrushSizeValueKey, 1)
+            MinimumBrushSizePixels = ReadPositiveInt(values, BrushSizeMinimumValueKey, 1),
+            MaximumBrushSizePixels = ReadPositiveInt(values, BrushSizeMaximumValueKey, 50),
+            DefaultBrushSizePixels = ReadPositiveInt(values, BrushSizeValueKey, 10)
         };
 
         return layout;
@@ -159,12 +172,14 @@ public static class PodiumsProfileSettings
         values[FillToolKey] = layout.HasFillTool.ToString();
         values[BrushSizeControlKey] = layout.HasBrushSizeControl.ToString();
         values[BrushSizeValueKey] = layout.DefaultBrushSizePixels.ToString(CultureInfo.InvariantCulture);
+        values[BrushSizeMinimumValueKey] = layout.MinimumBrushSizePixels.ToString(CultureInfo.InvariantCulture);
+        values[BrushSizeMaximumValueKey] = layout.MaximumBrushSizePixels.ToString(CultureInfo.InvariantCulture);
         values[PencilKey] = FormatPoint(layout.PencilTool);
-        values[BrushKey] = FormatPoint(layout.BrushTool);
+        values[EraserKey] = FormatPoint(layout.EraserTool);
         values[FillKey] = FormatPoint(layout.FillTool);
-        values[BrushSizeKey] = FormatPoint(layout.BrushSizeControl);
+        values[BrushSizeMinimumKey] = FormatPoint(layout.BrushSizeMinimum);
+        values[BrushSizeMaximumKey] = FormatPoint(layout.BrushSizeMaximum);
         values[HexInputKey] = FormatPoint(layout.HexInput);
-        values[HexApplyKey] = FormatPoint(layout.HexApply);
 
         return profile with { AdapterSettings = values };
     }
@@ -222,9 +237,11 @@ public static class PodiumsProfileSettings
 
     private static NormalizedPoint ReadPoint(
         IReadOnlyDictionary<string, string> values,
-        string key)
+        string key,
+        string? fallbackKey = null)
     {
-        if (!values.TryGetValue(key, out var value))
+        if (!values.TryGetValue(key, out var value) &&
+            (fallbackKey is null || !values.TryGetValue(fallbackKey, out value)))
         {
             return default;
         }

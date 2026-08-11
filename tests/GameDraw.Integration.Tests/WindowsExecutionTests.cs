@@ -24,6 +24,8 @@ public sealed class WindowsExecutionTests
 
         Assert.Equal(new ScreenPoint(150, 225), binding.Map(new NormalizedPoint(0, 0)));
         Assert.Equal(new ScreenPoint(249, 274), binding.Map(new NormalizedPoint(1, 1)));
+        Assert.Equal(new ScreenPoint(100, 200), binding.MapClient(new NormalizedPoint(0, 0)));
+        Assert.Equal(new ScreenPoint(299, 299), binding.MapClient(new NormalizedPoint(1, 1)));
 
         provider.Current = CreateGeometry(500, 600, 400, 200, 192);
         Assert.True(await binding.RefreshAsync());
@@ -114,6 +116,34 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
+    public async Task ForegroundLossDuringStrokeFailsBeforeFurtherInputAndReleasesMouse()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController(TimeSpan.FromMilliseconds(2));
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var execution = executor.ExecuteAsync(
+            CreateLongPlan(),
+            new DrawingExecutionOptions
+            {
+                SpeedMultiplier = 100_000,
+                InterStrokeDelayMilliseconds = 0,
+                ColorChangeDelayMilliseconds = 0
+            });
+
+        await WaitUntilAsync(() => input.Moves.Count >= 3);
+        provider.Current = provider.Current with
+        {
+            Snapshot = provider.Current.Snapshot with { IsForeground = false }
+        };
+        var result = await execution;
+
+        Assert.Equal(DrawingExecutionState.Failed, result.State);
+        Assert.Empty(input.PressedButtons);
+        Assert.Contains("포그라운드", result.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PauseGatePausesBetweenPointsAndResumesSafely()
     {
         var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
@@ -166,6 +196,77 @@ public sealed class WindowsExecutionTests
         var result = await execution;
         Assert.Equal(DrawingExecutionState.Completed, result.State);
         Assert.False(executor.VisualPauseRequested);
+    }
+
+    [Fact]
+    public async Task VisualPauseDuringStrokeImmediatelyReleasesMouseAndResumesSafely()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController(TimeSpan.FromMilliseconds(2));
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var execution = executor.ExecuteAsync(
+            CreateLongPlan(),
+            new DrawingExecutionOptions
+            {
+                SpeedMultiplier = 100_000,
+                InterStrokeDelayMilliseconds = 0,
+                ColorChangeDelayMilliseconds = 0
+            });
+
+        await WaitUntilAsync(() => input.PressedButtons.Count > 0);
+        executor.RequestVisualPause("canvas moved");
+
+        Assert.Empty(input.PressedButtons);
+        Assert.True(input.ReleaseAllButtonCalls > 0);
+        Assert.True(executor.IsPaused);
+
+        executor.ClearVisualPause();
+        var result = await execution;
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.Empty(input.PressedButtons);
+    }
+
+    [Fact]
+    public async Task ManualPauseIsNotClearedByVisualPauseRecovery()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+
+        executor.Pause();
+        executor.RequestVisualPause("canvas moved");
+        executor.ClearVisualPause();
+
+        Assert.True(executor.IsPaused);
+        executor.Resume();
+        Assert.False(executor.IsPaused);
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task ExecutionHooksRunBeforePlanAndEveryColorGroup()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        var hooks = new RecordingExecutionHooks();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+
+        var result = await executor.ExecuteAsync(
+            CreatePlan(),
+            new DrawingExecutionOptions
+            {
+                SpeedMultiplier = 100_000,
+                InterStrokeDelayMilliseconds = 0,
+                ColorChangeDelayMilliseconds = 0,
+                Hooks = hooks
+            });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.Equal(1, hooks.BeforePlanCalls);
+        Assert.Equal(new[] { RgbColor.Black, RgbColor.White }, hooks.Colors);
     }
 
     [Fact]
@@ -225,6 +326,36 @@ public sealed class WindowsExecutionTests
             DrawingMode mode,
             CancellationToken cancellationToken = default)
             => ValueTask.FromResult(TargetVerificationResult.Safe());
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        while (!condition())
+        {
+            await Task.Delay(5, timeout.Token);
+        }
+    }
+
+    private sealed class RecordingExecutionHooks : IDrawingExecutionHooks
+    {
+        public int BeforePlanCalls { get; private set; }
+
+        public List<RgbColor> Colors { get; } = new();
+
+        public ValueTask BeforePlanAsync(DrawingPlan plan, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeforePlanCalls++;
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask BeforeColorGroupAsync(RgbColor color, int colorGroupIndex, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Colors.Add(color);
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeGeometryProvider(TargetWindowGeometry initial) : IWindowGeometryProvider

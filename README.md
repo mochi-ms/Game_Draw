@@ -17,9 +17,10 @@ GameDraw는 사용자가 선택한 이미지를 Windows 화면 기반 그림 게
 dotnet restore GameDraw.sln
 dotnet build GameDraw.sln -c Debug
 dotnet test GameDraw.sln -c Debug
+dotnet run --project src/GameDraw.App/GameDraw.App.csproj -c Debug -r win-x64
 ```
 
-현재 브랜치는 신규 구조의 기반만 포함합니다. 제품 기능은 `docs/ROADMAP.md`의 단계별 완료 조건에 따라 추가합니다.
+현재 브랜치는 이미지 분석부터 Podiums 캘리브레이션, 안전 실행까지 연결된 7.5단계 통합 버전을 포함합니다. 캘리브레이션 중에는 Roblox 안의 안내 위치에 마우스를 놓고 `F6`, 실행 중에는 `F7` 일시 정지/재개와 `F8` 즉시 중지를 사용합니다.
 
 ## 정책과 안전
 

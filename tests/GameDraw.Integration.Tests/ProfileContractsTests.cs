@@ -6,6 +6,36 @@ namespace GameDraw.Integration.Tests;
 public sealed class ProfileContractsTests
 {
     [Fact]
+    public async Task JsonStoreRoundTripsUpdatesAndDeletesProfile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"gamedraw-profile-test-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "profiles.json");
+        try
+        {
+            using var store = new JsonGameProfileStore(path);
+            var profile = GameProfile.CreateDefault("테스트", "Podiums");
+
+            await store.SaveAsync(profile);
+            var loaded = Assert.Single(await store.LoadAsync());
+            Assert.Equal(profile.Id, loaded.Id);
+            Assert.Equal("테스트", loaded.Name);
+
+            await store.SaveAsync(profile with { Name = "수정됨" });
+            Assert.Equal("수정됨", Assert.Single(await store.LoadAsync()).Name);
+
+            await store.DeleteAsync(profile.Id);
+            Assert.Empty(await store.LoadAsync());
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
+
+    [Fact]
     public void DefaultProfileIsAValidDraftWithCalibrationWarning()
     {
         var result = GameProfile.CreateDefault("테스트 프로필", "테스트 게임").Validate();

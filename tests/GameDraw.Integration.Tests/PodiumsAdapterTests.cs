@@ -105,9 +105,10 @@ public sealed class PodiumsAdapterTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal("#123456", Assert.Single(input.TypedText));
         Assert.Equal(new ScreenPoint(120, 140), input.Clicks[0]);
-        Assert.Equal(new ScreenPoint(130, 150), input.Clicks[1]);
+        Assert.Single(input.Clicks);
         Assert.Contains("key-down:Control", input.Events);
         Assert.Contains("key-up:A", input.Events);
+        Assert.Contains("key-down:Enter", input.Events);
         Assert.True(input.ReleaseAllKeysCalls > 0);
     }
 
@@ -128,8 +129,32 @@ public sealed class PodiumsAdapterTests
         Assert.True(size.Succeeded, size.Message);
         Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
         Assert.Contains(new ScreenPoint(190, 110), input.Clicks);
-        Assert.Contains("7", input.TypedText);
-        Assert.Contains("key-down:Enter", input.Events);
+        Assert.Contains(new ScreenPoint(180, 173), input.Clicks);
+        Assert.Empty(input.TypedText);
+    }
+
+    [Fact]
+    public async Task ExecutionHooksSelectPencilSliderAndEveryRequestedColor()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController();
+        var hooks = new PodiumsExecutionHooks(profile, CreateContext(input));
+        var plan = new GameDraw.Core.Drawing.DrawingPlan(
+            GameDraw.Core.Models.DrawingMode.Pixel,
+            new PixelSize(1, 1),
+            new[]
+            {
+                new GameDraw.Core.Drawing.DrawingColorGroup(
+                    new RgbColor(0xAA, 0xBB, 0xCC),
+                    new[] { new GameDraw.Core.Drawing.DrawingStroke(new[] { new NormalizedPoint(0.5, 0.5) }) })
+            });
+
+        await hooks.BeforePlanAsync(plan);
+        await hooks.BeforeColorGroupAsync(new RgbColor(0xAA, 0xBB, 0xCC), 0);
+
+        Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
+        Assert.Contains(new ScreenPoint(180, 169), input.Clicks);
+        Assert.Contains("#AABBCC", input.TypedText);
     }
 
     [Fact]
@@ -171,12 +196,14 @@ public sealed class PodiumsAdapterTests
             HasFillTool = true,
             HasBrushSizeControl = true,
             PencilTool = new NormalizedPoint(0.7, 0.1),
-            BrushTool = new NormalizedPoint(0.8, 0.1),
+            EraserTool = new NormalizedPoint(0.8, 0.1),
             FillTool = new NormalizedPoint(0.9, 0.1),
-            BrushSizeControl = new NormalizedPoint(0.8, 0.2),
+            BrushSizeMinimum = new NormalizedPoint(0.8, 0.8),
+            BrushSizeMaximum = new NormalizedPoint(0.8, 0.2),
             HexInput = new NormalizedPoint(0.2, 0.4),
-            HexApply = new NormalizedPoint(0.3, 0.5),
-            DefaultBrushSizePixels = 1
+            MinimumBrushSizePixels = 1,
+            MaximumBrushSizePixels = 50,
+            DefaultBrushSizePixels = 10
         };
         var profile = PodiumsProfileSettings.ApplyControlLayout(adapter.CreateDefaultProfile(), controls);
         return profile with

@@ -74,9 +74,9 @@ public sealed class PodiumsVisualSafetyCoordinator
         return _monitor.Observe(detection.ToObservation(), _pauseController);
     }
 
-    public void Reset()
+    public void Reset(VisualObservation? baseline = null)
     {
-        _monitor.Reset();
+        _monitor.Reset(baseline);
         _pauseController?.ClearVisualPause();
     }
 }

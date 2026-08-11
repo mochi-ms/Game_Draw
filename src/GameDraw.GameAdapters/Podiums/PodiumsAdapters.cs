@@ -50,8 +50,8 @@ public sealed class PodiumsColorAdapter : IColorAdapter
             await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
             controlHeld = false;
             await input.TypeTextAsync(color.ToHex(), cancellationToken).ConfigureAwait(false);
-            await input.ClickAsync(context.Map(layout.HexApply), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            await input.KeyDownAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
 
             return new(true, $"Selected {color.ToHex()} in Podiums.");
         }
@@ -132,7 +132,7 @@ public sealed class PodiumsToolAdapter
         var point = tool switch
         {
             PodiumsToolKind.Pencil => layout.PencilTool,
-            PodiumsToolKind.Brush => layout.BrushTool,
+            PodiumsToolKind.Eraser => layout.EraserTool,
             PodiumsToolKind.Fill => layout.FillTool,
             _ => throw new ArgumentOutOfRangeException(nameof(tool))
         };
@@ -164,36 +164,26 @@ public sealed class PodiumsToolAdapter
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(context);
-        if (sizePixels <= 0)
-        {
-            return new(false, "Podiums brush size must be greater than zero.");
-        }
-
         var layout = PodiumsProfileSettings.ReadControlLayout(profile);
         if (!layout.IsConfigured || !layout.HasBrushSizeControl)
         {
             return new(false, "Podiums brush-size control is not calibrated.");
         }
 
+        if (sizePixels < layout.MinimumBrushSizePixels || sizePixels > layout.MaximumBrushSizePixels)
+        {
+            return new(false, $"Podiums brush size must be between {layout.MinimumBrushSizePixels} and {layout.MaximumBrushSizePixels}.");
+        }
+
         try
         {
-            await context.Input.ClickAsync(context.Map(layout.BrushSizeControl), cancellationToken: cancellationToken)
+            var span = Math.Max(1, layout.MaximumBrushSizePixels - layout.MinimumBrushSizePixels);
+            var amount = (sizePixels - layout.MinimumBrushSizePixels) / (double)span;
+            var sliderPoint = new GameDraw.Core.Geometry.NormalizedPoint(
+                layout.BrushSizeMinimum.X + ((layout.BrushSizeMaximum.X - layout.BrushSizeMinimum.X) * amount),
+                layout.BrushSizeMinimum.Y + ((layout.BrushSizeMaximum.Y - layout.BrushSizeMinimum.Y) * amount));
+            await context.Input.ClickAsync(context.Map(sliderPoint), cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            await context.Input.KeyDownAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
-            try
-            {
-                await context.Input.KeyDownAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
-                await context.Input.KeyUpAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                await context.Input.KeyUpAsync(InputKey.Control, CancellationToken.None).ConfigureAwait(false);
-            }
-
-            await context.Input.TypeTextAsync(sizePixels.ToString(System.Globalization.CultureInfo.InvariantCulture), cancellationToken)
-                .ConfigureAwait(false);
-            await context.Input.KeyDownAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
-            await context.Input.KeyUpAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
             return new(true, $"Selected Podiums brush size {sizePixels}px.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -242,7 +232,8 @@ public sealed class PodiumsGameAdapter : IGameAdapter
         GameAdapterCapabilities.CanvasCalibration |
         GameAdapterCapabilities.ColorSelection |
         GameAdapterCapabilities.BrushSelection |
-        GameAdapterCapabilities.FillTool;
+        GameAdapterCapabilities.FillTool |
+        GameAdapterCapabilities.VisualVerification;
 
     public IReadOnlyList<DrawingMode> SupportedModes => SupportedDrawingModes;
 
@@ -383,6 +374,66 @@ public sealed class PodiumsGameAdapter : IGameAdapter
 
     private static string NormalizeProcessName(string value)
         => Path.GetFileNameWithoutExtension(value.Trim());
+}
+
+/// <summary>
+/// Connects the generic executor lifecycle to the controls exposed by the
+/// calibrated Podiums profile.
+/// </summary>
+public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
+{
+    private readonly GameProfile _profile;
+    private readonly IGameAdapterExecutionContext _context;
+    private readonly PodiumsColorAdapter _colors = new();
+    private readonly PodiumsToolAdapter _tools = new();
+
+    public PodiumsExecutionHooks(GameProfile profile, IGameAdapterExecutionContext context)
+    {
+        _profile = profile ?? throw new ArgumentNullException(nameof(profile));
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+    }
+
+    public async ValueTask BeforePlanAsync(
+        GameDraw.Core.Drawing.DrawingPlan plan,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var toolResult = await _tools.SelectToolAsync(
+            PodiumsToolKind.Pencil,
+            _profile,
+            _context,
+            cancellationToken).ConfigureAwait(false);
+        EnsureSucceeded(toolResult);
+
+        var layout = PodiumsProfileSettings.ReadControlLayout(_profile);
+        if (layout.HasBrushSizeControl)
+        {
+            var sizeResult = await _tools.SelectBrushSizeAsync(
+                layout.DefaultBrushSizePixels,
+                _profile,
+                _context,
+                cancellationToken).ConfigureAwait(false);
+            EnsureSucceeded(sizeResult);
+        }
+    }
+
+    public async ValueTask BeforeColorGroupAsync(
+        GameDraw.Core.Colors.RgbColor color,
+        int colorGroupIndex,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _colors.SelectColorAsync(color, _profile, _context, cancellationToken)
+            .ConfigureAwait(false);
+        EnsureSucceeded(result);
+    }
+
+    private static void EnsureSucceeded(AdapterActionResult result)
+    {
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(result.Message ?? "Podiums control action failed.");
+        }
+    }
 }
 
 public sealed class PodiumsAdapterCatalog : IGameAdapterCatalog

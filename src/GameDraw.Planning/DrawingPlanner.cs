@@ -91,9 +91,9 @@ public sealed class DrawingPlanner : IDrawingPlanner
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
 
+    // Travel dominates because it determines input time; stroke count is a
+    // small tie-breaker for pixel-heavy plans with similar distance.
     private static double Score(PlanEstimate estimate)
-        // Travel dominates because it determines input time; stroke count is
-        // a small tie-breaker for pixel-heavy plans with similar distance.
         => estimate.TotalTravelPixels + (estimate.StrokeCount * 0.25d) + (estimate.ColorChanges * 5d);
 
     private static string ReasonFor(DrawingMode mode, PlanEstimate estimate)
