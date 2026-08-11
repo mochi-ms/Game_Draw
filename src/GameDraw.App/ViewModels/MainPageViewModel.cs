@@ -320,7 +320,7 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var profile = SelectedProfile ?? GameProfile.CreateDefault("Dry Run", "");
+        var profile = GetEffectiveProfile(SelectedProfile ?? GameProfile.CreateDefault("Dry Run", ""));
         var estimate = DrawingEstimator.Estimate(_drawingPlan, profile);
         DryRunText = $"Dry Run · {_drawingPlan.Statistics.ColorCount} colors · {estimate.StrokeCount:N0} strokes · 예상 {FormatDuration(estimate.EstimatedDuration)} · 이동 {estimate.TravelDistancePixels:N0}px";
         StatusMessage = "Dry Run은 실제 SendInput을 실행하지 않았습니다.";
@@ -334,7 +334,7 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (SelectedProfile is not { } profile)
+        if (SelectedProfile is not { } selectedProfile)
         {
             StatusMessage = "Drawing 전에 Game Profile을 선택하세요.";
             return;
@@ -347,6 +347,7 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var profile = GetEffectiveProfile(selectedProfile);
         var adapter = _services.ColorAdapters.Get(profile.ColorAdapter.Kind);
         var validation = profile.Validate();
         if (!validation.IsValid)
@@ -436,11 +437,11 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
         _previewCancellation?.Dispose();
         _previewCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         var cancellationToken = _previewCancellation.Token;
-        var profile = SelectedProfile ?? GameProfile.CreateDefault("Preview", "");
+        var profile = GetEffectiveProfile(SelectedProfile ?? GameProfile.CreateDefault("Preview", ""));
         var options = new ImageProcessingOptions
         {
-            TargetWidth = profile.Canvas.LogicalWidth,
-            TargetHeight = profile.Canvas.LogicalHeight,
+            TargetWidth = GetPreviewDimension(profile.Canvas.LogicalWidth),
+            TargetHeight = GetPreviewDimension(profile.Canvas.LogicalHeight),
             ColorCount = Math.Clamp(ColorCount, 1, 32),
             AdapterKind = SelectedColorAdapterKind,
             Palette = profile.ColorAdapter.Palette,
@@ -512,6 +513,10 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
 
     partial void OnColorCountChanged(int value) => _ = RefreshPreviewAsync();
 
+    partial void OnPrecisionChanged(double value) => _ = RefreshPreviewAsync();
+
+    partial void OnSpeedChanged(double value) => _ = RefreshPreviewAsync();
+
     private void OnPauseRequested(object? sender, EventArgs args)
     {
         App.DispatcherQueue?.TryEnqueue(() => TogglePauseCommand.Execute(null));
@@ -543,5 +548,16 @@ public partial class MainPageViewModel : ObservableObject, IDisposable
         }
 
         return duration.ToString(@"m\:ss", CultureInfo.InvariantCulture);
+    }
+
+    private GameProfile GetEffectiveProfile(GameProfile profile) => profile with
+    {
+        DrawingSpeed = Math.Clamp(Speed, 0.2d, 1d)
+    };
+
+    private int GetPreviewDimension(int logicalDimension)
+    {
+        var resolutionScale = 0.5d + (Math.Clamp(Precision, 0.2d, 1d) * 0.5d);
+        return Math.Clamp((int)Math.Round(logicalDimension * resolutionScale), 16, 256);
     }
 }
