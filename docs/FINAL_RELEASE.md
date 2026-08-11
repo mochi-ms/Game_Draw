@@ -1,6 +1,6 @@
 # GameDraw final release handoff
 
-The 0–9 roadmap is implemented. The current handoff is `1.0.0-rc.4`: a release candidate with path-accurate preview, clean line tracing, local smart-subject processing, face-feature-first ordering, and the compact rounded floating UI.
+The 0–9 roadmap is implemented. The current handoff is `1.0.0-rc.5`: a release candidate with path-accurate preview, game-frame-safe high-speed input, clean line tracing, adaptive local smart-subject processing, face-feature-first ordering, and the compact rounded floating UI.
 
 ## Build one distributable archive
 
@@ -12,8 +12,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Build-Release.ps1
 
 The script restores dependencies, runs the complete Release test suite, publishes an unpackaged self-contained application containing both .NET and Windows App SDK runtime files, checks that `GameDraw.App.exe` exists, and creates:
 
-- `artifacts/GameDraw-1.0.0-rc.4-win-x64.zip`
-- `artifacts/GameDraw-1.0.0-rc.4-win-x64.zip.sha256`
+- `artifacts/GameDraw-1.0.0-rc.5-win-x64.zip`
+- `artifacts/GameDraw-1.0.0-rc.5-win-x64.zip.sha256`
 
 Use a new version when creating another build:
 

@@ -11,6 +11,8 @@ public sealed record LineArtOptions
 
     public double WeakEdgeRatio { get; init; } = 0.42d;
 
+    public int MinimumComponentPixels { get; init; } = 6;
+
     public void Validate()
     {
         if (!double.IsFinite(EdgeThreshold) || EdgeThreshold is <= 0d or > 1_442d)
@@ -21,6 +23,11 @@ public sealed record LineArtOptions
         if (!double.IsFinite(WeakEdgeRatio) || WeakEdgeRatio is <= 0d or >= 1d)
         {
             throw new ArgumentOutOfRangeException(nameof(WeakEdgeRatio));
+        }
+
+        if (MinimumComponentPixels < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MinimumComponentPixels));
         }
     }
 }
@@ -91,8 +98,15 @@ public static class LineArtProcessor
             }
         }
 
-        var edges = Hysteresis(suppressed, source.Width, source.Height, options.EdgeThreshold, options.WeakEdgeRatio);
-        RemoveIsolatedNoise(edges, source.Width, source.Height);
+        var adaptiveThreshold = AdaptiveHighThreshold(
+            suppressed,
+            source.PixelCount < 256 ? options.EdgeThreshold * 0.15d : options.EdgeThreshold);
+        var edges = Hysteresis(suppressed, source.Width, source.Height, adaptiveThreshold, options.WeakEdgeRatio);
+        RemoveSmallComponents(
+            edges,
+            source.Width,
+            source.Height,
+            source.PixelCount < 256 ? 1 : options.MinimumComponentPixels);
         var output = new RgbaPixel[source.PixelCount];
         for (var index = 0; index < output.Length; index++)
         {
@@ -115,22 +129,40 @@ public static class LineArtProcessor
             raw[index] = (value * alpha) + (255d * (1d - alpha));
         }
 
-        var blurred = new double[raw.Length];
-        ReadOnlySpan<int> kernel = [1, 2, 1, 2, 4, 2, 1, 2, 1];
+        // A five-tap blur consumes almost the entire signal in icon-sized inputs.
+        // Keep their real contrast so a deliberate one-pixel boundary is not erased.
+        if (source.Width < 8 || source.Height < 8)
+        {
+            return raw;
+        }
+
+        var horizontal = new double[raw.Length];
+        ReadOnlySpan<int> kernel = [1, 4, 6, 4, 1];
         for (var y = 0; y < source.Height; y++)
         {
             for (var x = 0; x < source.Width; x++)
             {
                 var total = 0d;
-                var kernelIndex = 0;
-                for (var offsetY = -1; offsetY <= 1; offsetY++)
+                for (var offset = -2; offset <= 2; offset++)
                 {
-                    var sampleY = Math.Clamp(y + offsetY, 0, source.Height - 1);
-                    for (var offsetX = -1; offsetX <= 1; offsetX++)
-                    {
-                        var sampleX = Math.Clamp(x + offsetX, 0, source.Width - 1);
-                        total += raw[(sampleY * source.Width) + sampleX] * kernel[kernelIndex++];
-                    }
+                    var sampleX = Math.Clamp(x + offset, 0, source.Width - 1);
+                    total += raw[(y * source.Width) + sampleX] * kernel[offset + 2];
+                }
+
+                horizontal[(y * source.Width) + x] = total / 16d;
+            }
+        }
+
+        var blurred = new double[raw.Length];
+        for (var y = 0; y < source.Height; y++)
+        {
+            for (var x = 0; x < source.Width; x++)
+            {
+                var total = 0d;
+                for (var offset = -2; offset <= 2; offset++)
+                {
+                    var sampleY = Math.Clamp(y + offset, 0, source.Height - 1);
+                    total += horizontal[(sampleY * source.Width) + x] * kernel[offset + 2];
                 }
 
                 blurred[(y * source.Width) + x] = total / 16d;
@@ -202,41 +234,72 @@ public static class LineArtProcessor
         return edges;
     }
 
-    private static void RemoveIsolatedNoise(bool[] edges, int width, int height)
+    private static double AdaptiveHighThreshold(double[] magnitude, double minimum)
     {
-        var remove = new List<int>();
-        for (var y = 1; y < height - 1; y++)
+        var values = magnitude.Where(value => value > 0d).OrderBy(value => value).ToArray();
+        if (values.Length == 0)
         {
-            for (var x = 1; x < width - 1; x++)
-            {
-                var index = (y * width) + x;
-                if (!edges[index])
-                {
-                    continue;
-                }
+            return minimum;
+        }
 
-                var neighbors = 0;
+        var density = values.Length / (double)magnitude.Length;
+        var percentile = density >= 0.16d ? 0.9d : density >= 0.08d ? 0.84d : 0.72d;
+        var index = Math.Clamp((int)Math.Round((values.Length - 1) * percentile), 0, values.Length - 1);
+        return Math.Max(minimum, values[index]);
+    }
+
+    private static void RemoveSmallComponents(bool[] edges, int width, int height, int minimumPixels)
+    {
+        var visited = new bool[edges.Length];
+        var queue = new Queue<int>();
+        var component = new List<int>();
+        for (var start = 0; start < edges.Length; start++)
+        {
+            if (!edges[start] || visited[start])
+            {
+                continue;
+            }
+
+            component.Clear();
+            var touchesBorder = false;
+            visited[start] = true;
+            queue.Enqueue(start);
+            while (queue.TryDequeue(out var index))
+            {
+                component.Add(index);
+                var x = index % width;
+                var y = index / width;
+                touchesBorder |= x <= 1 || y <= 1 || x >= width - 2 || y >= height - 2;
                 for (var offsetY = -1; offsetY <= 1; offsetY++)
                 {
                     for (var offsetX = -1; offsetX <= 1; offsetX++)
                     {
-                        if ((offsetX != 0 || offsetY != 0) && edges[index + (offsetY * width) + offsetX])
+                        if ((offsetX == 0 && offsetY == 0) ||
+                            (uint)(x + offsetX) >= (uint)width ||
+                            (uint)(y + offsetY) >= (uint)height)
                         {
-                            neighbors++;
+                            continue;
+                        }
+
+                        var neighbor = ((y + offsetY) * width) + x + offsetX;
+                        if (edges[neighbor] && !visited[neighbor])
+                        {
+                            visited[neighbor] = true;
+                            queue.Enqueue(neighbor);
                         }
                     }
                 }
+            }
 
-                if (neighbors == 0)
+            var borderArtifactLimit = Math.Max(24, (width + height) / 16);
+            if (component.Count < minimumPixels ||
+                (edges.Length >= 256 && touchesBorder && component.Count < borderArtifactLimit))
+            {
+                foreach (var index in component)
                 {
-                    remove.Add(index);
+                    edges[index] = false;
                 }
             }
-        }
-
-        foreach (var index in remove)
-        {
-            edges[index] = false;
         }
     }
 }

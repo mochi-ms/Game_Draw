@@ -65,6 +65,35 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
+    public async Task ExecutorKeepsEachStrokeDownLongEnoughForAGameFrame()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(10, 20, 100, 100, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await executor.ExecuteAsync(
+            CreatePlan(),
+            new DrawingExecutionOptions
+            {
+                SpeedMultiplier = 100_000,
+                InterStrokeDelayMilliseconds = 0,
+                ColorChangeDelayMilliseconds = 0,
+                StrokeStartSettleMilliseconds = 5,
+                PenDownSettleMilliseconds = 2,
+                MinimumPenDownMilliseconds = 20,
+                PenUpSettleMilliseconds = 10
+            });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.True(started.Elapsed >= TimeSpan.FromMilliseconds(60));
+        var firstUp = input.Events.IndexOf("up");
+        var nextMove = input.Events.FindIndex(firstUp + 1, item => item.StartsWith("move:", StringComparison.Ordinal));
+        Assert.True(firstUp >= 0 && nextMove > firstUp);
+    }
+
+    [Fact]
     public async Task ForegroundRequirementStopsBeforeInput()
     {
         var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96) with

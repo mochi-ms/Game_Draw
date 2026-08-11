@@ -366,7 +366,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
@@ -525,7 +525,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid>
@@ -545,6 +545,8 @@
                                 Grid.Row="2"
                                 Text="{x:Bind ViewModel.PlanSummary, Mode=OneWay}"
                                 TextWrapping="Wrap"
+                                TextTrimming="CharacterEllipsis"
+                                MaxLines="2"
                                 VerticalAlignment="Center"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                             <Button

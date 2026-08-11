@@ -26,6 +26,14 @@ public sealed record DrawingExecutionOptions
 
     public int ColorChangeDelayMilliseconds { get; init; } = 100;
 
+    public int StrokeStartSettleMilliseconds { get; init; } = 8;
+
+    public int PenDownSettleMilliseconds { get; init; } = 4;
+
+    public int PenUpSettleMilliseconds { get; init; } = 18;
+
+    public int MinimumPenDownMilliseconds { get; init; } = 20;
+
     public bool RequireForegroundTarget { get; init; } = true;
 
     public IDrawingExecutionHooks? Hooks { get; init; }
@@ -50,6 +58,26 @@ public sealed record DrawingExecutionOptions
         if (ColorChangeDelayMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(ColorChangeDelayMilliseconds));
+        }
+
+        if (StrokeStartSettleMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(StrokeStartSettleMilliseconds));
+        }
+
+        if (PenDownSettleMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PenDownSettleMilliseconds));
+        }
+
+        if (PenUpSettleMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PenUpSettleMilliseconds));
+        }
+
+        if (MinimumPenDownMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MinimumPenDownMilliseconds));
         }
     }
 }

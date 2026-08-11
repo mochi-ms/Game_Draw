@@ -322,7 +322,8 @@ public sealed class DrawingSessionController : IDisposable
             InterStrokeDelayMilliseconds = speedMultiplier >= 8d
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
-            ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier)
+            ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
+            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 46 : 37
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
@@ -391,7 +392,9 @@ public sealed class DrawingSessionController : IDisposable
         var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
         var input = new WindowsInputController(new WindowsInputOptions
         {
-            MaxEventsPerSecond = prepared.SpeedMultiplier >= 8d ? 2_000d : 1_000d
+            // Roblox coalesces very dense mouse messages. Frame-paced input
+            // preserves curves and prevents skipped pen-up events.
+            MaxEventsPerSecond = prepared.SpeedMultiplier >= 8d ? 144d : 96d
         });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
@@ -418,6 +421,10 @@ public sealed class DrawingSessionController : IDisposable
                         ? 0
                         : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
+                    StrokeStartSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 8 : 6,
+                    PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 4 : 3,
+                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 18 : 14,
+                    MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 20 : 18,
                     Hooks = hooks,
                     RequireForegroundTarget = true
                 },

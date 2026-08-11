@@ -179,7 +179,7 @@ public sealed partial class MainPage : Page, IDisposable
         content.Children.Add(CreateHelpSection("선화 권장 설정", "검정 선화 + 클린 펜 스트로크는 노이즈를 줄이고 선의 중심을 한 번씩 이어 그립니다. Podiums 브러시는 자동으로 최소 굵기를 사용합니다. 점묘나 원치 않는 가로선이 싫다면 픽셀 점찍기와 스캔라인을 선택하지 마세요."));
         content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴·눈이 있을 가능성이 높은 위쪽 중심 영역의 선을 먼저 그립니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
         content.Children.Add(CreateHelpSection("그리기 방법 비교", "클린 펜: 깔끔한 선화 권장\n픽셀 점찍기: 작은 픽셀아트 전용, 가장 느림\n가로/세로 스캔라인: 단색 면을 빠르게 긋지만 선화에는 줄무늬 위험\n윤곽선: 로고·도형의 바깥 테두리\n면 채우기: 넓은 색 면\n하이브리드: 윤곽선과 채색을 모두 실행"));
-        content.Children.Add(CreateHelpSection("속도", "안전하게 1×, 빠르게 2×, 매우 빠르게 8×입니다. 매우 빠르게는 클린 펜처럼 연결된 획에서 가장 효과적이며 짧은 점을 수천 번 찍는 픽셀 모드에서는 게임 입력 특성상 권장하지 않습니다."));
+        content.Children.Add(CreateHelpSection("속도", "안전하게는 가장 넉넉한 입력 간격, 빠르게는 균형 설정입니다. 매우 빠르게도 획을 생략하지 않으며 Roblox가 놓치지 않도록 각 펜다운과 펜업을 게임 프레임에 맞춘 최대 안전 속도로 보냅니다. 복잡한 사진은 획 수 자체가 많아 시간이 필요합니다."));
         content.Children.Add(CreateHelpSection("연결과 안전", "캔버스 비율을 고르고 흰 그림판만 드래그해 지정합니다. 실행 시 Roblox가 활성화되며 F7은 일시정지/재개, F8은 즉시 마우스를 놓고 중지합니다. ‘작업 초기화’는 진행 중 작업도 중지합니다."));
         var dialog = new ContentDialog
         {
@@ -737,8 +737,8 @@ public sealed partial class MainPage : Page, IDisposable
         SafetyHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         PreviewDescription.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         FileHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
-        CalibrationHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
-        AnalysisDescriptionPanel.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
+        CalibrationHint.Visibility = height < 1120 ? Visibility.Collapsed : Visibility.Visible;
+        AnalysisDescriptionPanel.Visibility = height < 1180 ? Visibility.Collapsed : Visibility.Visible;
         PreviewBadge.Visibility = width < 900 ? Visibility.Collapsed : Visibility.Visible;
         UpdateHeaderActions(width);
     }

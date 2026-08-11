@@ -76,8 +76,9 @@ public static class SubjectFocusProcessor
             return SubjectFocusResult.Unchanged(source);
         }
 
-        var background = EstimateBorderColor(source);
-        var backgroundMask = FloodBackground(source, background, options.BackgroundTolerance);
+        var backgrounds = EstimateBorderColors(source);
+        var backgroundMask = FloodBackground(source, backgrounds, options.BackgroundTolerance);
+        KeepPrimarySubjectComponents(backgroundMask, source.Width, source.Height);
         var foregroundCount = backgroundMask.Count(value => !value);
         var foregroundRatio = foregroundCount / (double)source.PixelCount;
         if (foregroundRatio < options.MinimumForegroundRatio ||
@@ -122,17 +123,18 @@ public static class SubjectFocusProcessor
         return new SubjectFocusResult(frame, bounds, true, cropped, personLikely, face);
     }
 
-    private static RgbColor EstimateBorderColor(ImageFrame source)
+    private static RgbColor[] EstimateBorderColors(ImageFrame source)
     {
         var reds = new List<byte>((source.Width + source.Height) * 2);
         var greens = new List<byte>(reds.Capacity);
         var blues = new List<byte>(reds.Capacity);
-        AddRow(0);
-        AddRow(source.Height - 1);
+        var bins = new Dictionary<int, BorderBin>();
+        AddRow(0, 1);
+        AddRow(source.Height - 1, 2);
         for (var y = 1; y < source.Height - 1; y++)
         {
-            Add(source[0, y]);
-            Add(source[source.Width - 1, y]);
+            Add(source[0, y], 4);
+            Add(source[source.Width - 1, y], 8);
         }
 
         reds.Sort();
@@ -140,21 +142,32 @@ public static class SubjectFocusProcessor
         blues.Sort();
         if (reds.Count == 0)
         {
-            return RgbColor.White;
+            return new[] { RgbColor.White };
         }
 
         var middle = reds.Count / 2;
-        return new RgbColor(reds[middle], greens[middle], blues[middle]);
+        var colors = bins.Values
+            .Where(bin => System.Numerics.BitOperations.PopCount((uint)bin.SideMask) >= 2 ||
+                bin.Count >= reds.Count * 0.1d)
+            .OrderByDescending(bin => bin.Count)
+            .Take(10)
+            .Select(bin => new RgbColor(
+                (byte)(bin.Red / bin.Count),
+                (byte)(bin.Green / bin.Count),
+                (byte)(bin.Blue / bin.Count)))
+            .ToList();
+        colors.Add(new RgbColor(reds[middle], greens[middle], blues[middle]));
+        return colors.Distinct().ToArray();
 
-        void AddRow(int y)
+        void AddRow(int y, int side)
         {
             for (var x = 0; x < source.Width; x++)
             {
-                Add(source[x, y]);
+                Add(source[x, y], side);
             }
         }
 
-        void Add(RgbaPixel pixel)
+        void Add(RgbaPixel pixel, int side)
         {
             if (pixel.Alpha < 16)
             {
@@ -164,10 +177,21 @@ public static class SubjectFocusProcessor
             reds.Add(pixel.Color.R);
             greens.Add(pixel.Color.G);
             blues.Add(pixel.Color.B);
+            var key = ((pixel.Color.R >> 4) << 8) | ((pixel.Color.G >> 4) << 4) | (pixel.Color.B >> 4);
+            bins.TryGetValue(key, out var bin);
+            bins[key] = new BorderBin(
+                bin.Red + pixel.Color.R,
+                bin.Green + pixel.Color.G,
+                bin.Blue + pixel.Color.B,
+                bin.Count + 1,
+                bin.SideMask | side);
         }
     }
 
-    private static bool[] FloodBackground(ImageFrame source, RgbColor background, double tolerance)
+    private static bool[] FloodBackground(
+        ImageFrame source,
+        IReadOnlyList<RgbColor> backgrounds,
+        double tolerance)
     {
         var backgroundMask = new bool[source.PixelCount];
         var queued = new bool[source.PixelCount];
@@ -190,7 +214,8 @@ public static class SubjectFocusProcessor
             var x = index % source.Width;
             var y = index / source.Width;
             var pixel = source[x, y];
-            if (pixel.Alpha >= 16 && ColorDistanceSquared(pixel.Color, background) > toleranceSquared)
+            if (pixel.Alpha >= 16 &&
+                backgrounds.All(background => ColorDistanceSquared(pixel.Color, background) > toleranceSquared))
             {
                 continue;
             }
@@ -242,6 +267,168 @@ public static class SubjectFocusProcessor
             : new PixelRect(left, top, right - left + 1, bottom - top + 1);
     }
 
+    private static void KeepPrimarySubjectComponents(bool[] backgroundMask, int width, int height)
+    {
+        var labels = new int[backgroundMask.Length];
+        Array.Fill(labels, -1);
+        var components = new List<Component>();
+        var queue = new Queue<int>();
+        for (var start = 0; start < backgroundMask.Length; start++)
+        {
+            if (backgroundMask[start] || labels[start] >= 0)
+            {
+                continue;
+            }
+
+            var label = components.Count;
+            var area = 0;
+            var left = width;
+            var top = height;
+            var right = -1;
+            var bottom = -1;
+            labels[start] = label;
+            queue.Enqueue(start);
+            while (queue.TryDequeue(out var index))
+            {
+                var x = index % width;
+                var y = index / width;
+                area++;
+                left = Math.Min(left, x);
+                top = Math.Min(top, y);
+                right = Math.Max(right, x);
+                bottom = Math.Max(bottom, y);
+                for (var offsetY = -1; offsetY <= 1; offsetY++)
+                {
+                    for (var offsetX = -1; offsetX <= 1; offsetX++)
+                    {
+                        if ((offsetX == 0 && offsetY == 0) ||
+                            (uint)(x + offsetX) >= (uint)width ||
+                            (uint)(y + offsetY) >= (uint)height)
+                        {
+                            continue;
+                        }
+
+                        var neighbor = ((y + offsetY) * width) + x + offsetX;
+                        if (!backgroundMask[neighbor] && labels[neighbor] < 0)
+                        {
+                            labels[neighbor] = label;
+                            queue.Enqueue(neighbor);
+                        }
+                    }
+                }
+            }
+
+            components.Add(new Component(area, new PixelRect(left, top, right - left + 1, bottom - top + 1)));
+        }
+
+        if (components.Count <= 1)
+        {
+            return;
+        }
+
+        var imageCenter = new PixelPoint(width / 2, height / 2);
+        var primaryIndex = Enumerable.Range(0, components.Count)
+            .OrderByDescending(index => ComponentScore(components[index], imageCenter, width, height))
+            .First();
+        var primary = components[primaryIndex];
+        if (primary.Area < Math.Max(16, backgroundMask.Length * 0.006d))
+        {
+            return;
+        }
+
+        var minimumDetailArea = Math.Max(3, (int)Math.Round(primary.Area * 0.00015d));
+        var keep = new bool[components.Count];
+        keep[primaryIndex] = true;
+        var maximumDetailDistance = Math.Clamp((int)Math.Round(Math.Min(width, height) * 0.004d), 5, 12);
+        var faceEnvelope = new PixelRect(
+            primary.Bounds.X + (int)Math.Round(primary.Bounds.Width * 0.31d),
+            primary.Bounds.Y,
+            Math.Max(1, (int)Math.Round(primary.Bounds.Width * 0.38d)),
+            Math.Max(1, (int)Math.Round(primary.Bounds.Height * 0.43d)));
+        var distances = new ushort[backgroundMask.Length];
+        Array.Fill(distances, ushort.MaxValue);
+        queue.Clear();
+        for (var index = 0; index < labels.Length; index++)
+        {
+            if (labels[index] == primaryIndex)
+            {
+                distances[index] = 0;
+                queue.Enqueue(index);
+            }
+        }
+
+        while (queue.TryDequeue(out var index))
+        {
+            var distance = distances[index];
+            if (distance >= maximumDetailDistance)
+            {
+                continue;
+            }
+
+            var x = index % width;
+            var y = index / width;
+            Visit(x - 1, y, distance);
+            Visit(x + 1, y, distance);
+            Visit(x, y - 1, distance);
+            Visit(x, y + 1, distance);
+        }
+
+        for (var index = 0; index < labels.Length; index++)
+        {
+            var label = labels[index];
+            if (label >= 0 && components[label].Area >= minimumDetailArea &&
+                (distances[index] <= maximumDetailDistance ||
+                 faceEnvelope.Contains(components[label].Bounds.Center)))
+            {
+                keep[label] = true;
+            }
+        }
+
+        for (var index = 0; index < backgroundMask.Length; index++)
+        {
+            if (!backgroundMask[index] && !keep[labels[index]])
+            {
+                backgroundMask[index] = true;
+            }
+        }
+
+        void Visit(int x, int y, ushort distance)
+        {
+            if ((uint)x >= (uint)width || (uint)y >= (uint)height)
+            {
+                return;
+            }
+
+            var neighbor = (y * width) + x;
+            var next = (ushort)(distance + 1);
+            if (next < distances[neighbor])
+            {
+                distances[neighbor] = next;
+                queue.Enqueue(neighbor);
+            }
+        }
+    }
+
+    private static double ComponentScore(Component component, PixelPoint imageCenter, int width, int height)
+    {
+        var normalizedX = (component.Bounds.Center.X - imageCenter.X) / (double)Math.Max(1, width);
+        var normalizedY = (component.Bounds.Center.Y - imageCenter.Y) / (double)Math.Max(1, height);
+        var centerWeight = Math.Max(0.25d, 1d - Math.Sqrt((normalizedX * normalizedX) + (normalizedY * normalizedY)));
+        var touchedEdges = 0;
+        if (component.Bounds.X == 0) touchedEdges++;
+        if (component.Bounds.Y == 0) touchedEdges++;
+        if (component.Bounds.Right == width) touchedEdges++;
+        if (component.Bounds.Bottom == height) touchedEdges++;
+        var edgePenalty = touchedEdges switch
+        {
+            0 => 1d,
+            1 => 0.72d,
+            2 => 0.3d,
+            _ => 0.1d
+        };
+        return component.Area * (0.55d + centerWeight) * edgePenalty;
+    }
+
     private static PixelRect Expand(PixelRect bounds, int margin, int width, int height)
     {
         var left = Math.Max(0, bounds.X - margin);
@@ -286,4 +473,8 @@ public static class SubjectFocusProcessor
         var blue = first.B - second.B;
         return (red * red) + (green * green) + (blue * blue);
     }
+
+    private sealed record Component(int Area, PixelRect Bounds);
+
+    private readonly record struct BorderBin(long Red, long Green, long Blue, int Count, int SideMask);
 }

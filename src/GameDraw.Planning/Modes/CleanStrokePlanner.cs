@@ -12,7 +12,8 @@ namespace GameDraw.Planning.Modes;
 /// </summary>
 internal static class CleanStrokePlanner
 {
-    private const double SimplificationTolerancePixels = 1.05d;
+    private const double SimplificationTolerancePixels = 0.9d;
+    private const double MinimumStrokeLengthPixels = 2.25d;
 
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
     {
@@ -23,7 +24,13 @@ internal static class CleanStrokePlanner
             Thin(mask, image.Width, image.Height);
             foreach (var traced in Trace(mask, image.Width, image.Height))
             {
-                var simplified = Simplify(traced.Points, SimplificationTolerancePixels);
+                if (PathLength(traced.Points, traced.IsClosed) < MinimumStrokeLengthPixels)
+                {
+                    continue;
+                }
+
+                var smoothed = Smooth(traced.Points, traced.IsClosed);
+                var simplified = Simplify(smoothed, SimplificationTolerancePixels);
                 if (simplified.Count == 0)
                 {
                     continue;
@@ -316,6 +323,49 @@ internal static class CleanStrokePlanner
             SimplifyRange(first, furthest);
             SimplifyRange(furthest, last);
         }
+    }
+
+    private static IReadOnlyList<PixelPoint> Smooth(IReadOnlyList<PixelPoint> points, bool closed)
+    {
+        if (points.Count < 3)
+        {
+            return points;
+        }
+
+        var result = new PixelPoint[points.Count];
+        for (var index = 0; index < points.Count; index++)
+        {
+            if (!closed && (index == 0 || index == points.Count - 1))
+            {
+                result[index] = points[index];
+                continue;
+            }
+
+            var previous = points[(index - 1 + points.Count) % points.Count];
+            var current = points[index];
+            var next = points[(index + 1) % points.Count];
+            result[index] = new PixelPoint(
+                (previous.X + (2d * current.X) + next.X) / 4d,
+                (previous.Y + (2d * current.Y) + next.Y) / 4d);
+        }
+
+        return result;
+    }
+
+    private static double PathLength(IReadOnlyList<PixelPoint> points, bool closed)
+    {
+        var length = 0d;
+        for (var index = 1; index < points.Count; index++)
+        {
+            length += Math.Sqrt(DistanceSquared(points[index - 1], points[index]));
+        }
+
+        if (closed && points.Count > 1)
+        {
+            length += Math.Sqrt(DistanceSquared(points[^1], points[0]));
+        }
+
+        return length;
     }
 
     private static double SegmentDistanceSquared(PixelPoint point, PixelPoint start, PixelPoint end)

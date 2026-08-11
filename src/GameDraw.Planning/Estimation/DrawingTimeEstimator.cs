@@ -13,7 +13,10 @@ internal static class DrawingTimeEstimator
         var pointCount = 0;
         var penDown = 0d;
         var penUp = 0d;
-        var colorChanges = Math.Max(0, plan.ColorGroups.Count - 1);
+        var colorCount = plan.ColorGroups.Select(group => group.Color).Distinct().Count();
+        var colorChanges = plan.ColorGroups
+            .Zip(plan.ColorGroups.Skip(1), (first, second) => first.Color != second.Color)
+            .Count(changed => changed);
         var current = new NormalizedPoint(0d, 0d);
 
         for (var groupIndex = 0; groupIndex < plan.ColorGroups.Count; groupIndex++)
@@ -31,14 +34,15 @@ internal static class DrawingTimeEstimator
 
         var totalTravel = penDown + (penUp * options.PenUpMovementMultiplier);
         var movementSeconds = totalTravel / options.MovementPixelsPerSecond;
-        var strokeDelaySeconds = strokeCount * options.InterStrokeDelayMilliseconds / 1000d;
+        var strokeDelaySeconds = strokeCount *
+            (options.InterStrokeDelayMilliseconds + options.PerStrokeSafetyDelayMilliseconds) / 1000d;
         var colorDelaySeconds = colorChanges * options.ColorChangeDelayMilliseconds / 1000d;
         var duration = TimeSpan.FromSeconds(Math.Max(0d, movementSeconds + strokeDelaySeconds + colorDelaySeconds));
 
         return new PlanEstimate(
             strokeCount,
             pointCount,
-            plan.ColorGroups.Count,
+            colorCount,
             colorChanges,
             penDown,
             penUp,

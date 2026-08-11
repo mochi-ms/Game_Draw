@@ -28,6 +28,8 @@ public sealed record DrawingPlannerOptions
 
     public int ColorChangeDelayMilliseconds { get; init; } = 100;
 
+    public int PerStrokeSafetyDelayMilliseconds { get; init; }
+
     public double PenUpMovementMultiplier { get; init; } = 1d;
 
     public void Validate()
@@ -55,6 +57,11 @@ public sealed record DrawingPlannerOptions
         if (ColorChangeDelayMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(ColorChangeDelayMilliseconds));
+        }
+
+        if (PerStrokeSafetyDelayMilliseconds < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PerStrokeSafetyDelayMilliseconds));
         }
 
         if (!double.IsFinite(PenUpMovementMultiplier) || PenUpMovementMultiplier < 0d)

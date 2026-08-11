@@ -212,16 +212,19 @@ public sealed class WindowsDrawingExecutor :
                 await options.Hooks.BeforePlanAsync(plan, token).ConfigureAwait(false);
             }
 
+            GameDraw.Core.Colors.RgbColor? activeColor = null;
             for (var groupIndex = 0; groupIndex < plan.ColorGroups.Count; groupIndex++)
             {
                 var group = plan.ColorGroups[groupIndex];
                 await _pauseGate.WaitAsync(token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
                 await EnsureTargetAsync(plan, options, token).ConfigureAwait(false);
-                if (options.Hooks is not null)
+                var colorChanged = activeColor is null || activeColor.Value != group.Color;
+                if (options.Hooks is not null && colorChanged)
                 {
                     await options.Hooks.BeforeColorGroupAsync(group.Color, groupIndex, token).ConfigureAwait(false);
                 }
+                activeColor = group.Color;
 
                 for (var strokeIndex = 0; strokeIndex < group.Strokes.Count; strokeIndex++)
                 {
@@ -235,7 +238,8 @@ public sealed class WindowsDrawingExecutor :
                     await DelayAsync(options.InterStrokeDelayMilliseconds, options.SpeedMultiplier, token).ConfigureAwait(false);
                 }
 
-                if (groupIndex < plan.ColorGroups.Count - 1)
+                if (groupIndex < plan.ColorGroups.Count - 1 &&
+                    plan.ColorGroups[groupIndex + 1].Color != group.Color)
                 {
                     await DelayAsync(options.ColorChangeDelayMilliseconds, options.SpeedMultiplier, token).ConfigureAwait(false);
                 }
@@ -332,9 +336,12 @@ public sealed class WindowsDrawingExecutor :
         await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
         var first = _binding.Map(stroke.Points[0]);
         await _input.MoveToAsync(first, cancellationToken).ConfigureAwait(false);
+        await DelayUnscaledAsync(options.StrokeStartSettleMilliseconds, cancellationToken).ConfigureAwait(false);
         await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+        var penDownStarted = Stopwatch.GetTimestamp();
+        await DelayUnscaledAsync(options.PenDownSettleMilliseconds, cancellationToken).ConfigureAwait(false);
         var buttonDown = true;
         var releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
         try
@@ -378,7 +385,23 @@ public sealed class WindowsDrawingExecutor :
             {
                 try
                 {
+                    if (!cancellationToken.IsCancellationRequested && !StopRequested)
+                    {
+                        var elapsedMilliseconds = (Stopwatch.GetTimestamp() - penDownStarted) *
+                            1000d / Stopwatch.Frequency;
+                        var remaining = Math.Max(0, options.MinimumPenDownMilliseconds - elapsedMilliseconds);
+                        if (remaining > 0d)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(remaining), CancellationToken.None)
+                                .ConfigureAwait(false);
+                        }
+                    }
+
                     await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                    if (!cancellationToken.IsCancellationRequested && !StopRequested)
+                    {
+                        await DelayUnscaledAsync(options.PenUpSettleMilliseconds, CancellationToken.None).ConfigureAwait(false);
+                    }
                 }
                 catch
                 {
@@ -425,6 +448,16 @@ public sealed class WindowsDrawingExecutor :
         }
 
         await Task.Delay(TimeSpan.FromMilliseconds(milliseconds / speedMultiplier), cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask DelayUnscaledAsync(
+        int milliseconds,
+        CancellationToken cancellationToken)
+    {
+        if (milliseconds > 0)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(milliseconds), cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static DrawingExecutionResult StoppingResult(

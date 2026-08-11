@@ -130,7 +130,7 @@ public partial class MainPageViewModel : ObservableObject
     public string SpeedDescription => SelectedSpeed switch
     {
         "안전하게" => "1× · 입력 안정성을 우선합니다.",
-        "매우 빠르게" => "8× · 연결 선을 묶고 불필요한 획 지연을 제거합니다.",
+        "매우 빠르게" => "게임 프레임 동기화 고속 · 누락 없이 받을 수 있는 최대 안전 속도입니다.",
         _ => "2× · 속도와 입력 안정성의 권장 균형입니다."
     };
 
