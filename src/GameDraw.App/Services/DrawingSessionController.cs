@@ -31,17 +31,34 @@ public sealed record PreparedDrawing(
     SubjectFocusResult SubjectFocus,
     int RequestedColors,
     DrawingRenderStyle RenderStyle,
+    DrawingQualityPreset Quality,
     double SpeedMultiplier,
     bool SmartSubjectEnabled,
     bool FacePriorityApplied)
 {
     public string Summary =>
-        "스마트 고속 선화 · " +
+        $"{StyleLabel(RenderStyle)} · {QualityLabel(Quality)} · " +
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
         $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}" +
         (SubjectFocus.BackgroundRemoved ? " · 배경 제거" : string.Empty) +
         (FacePriorityApplied ? " · 얼굴 특징 우선" : string.Empty);
+
+    private static string StyleLabel(DrawingRenderStyle style) => style switch
+    {
+        DrawingRenderStyle.NaturalLineArt => "자연스러운 펜선",
+        DrawingRenderStyle.LineArt => "정밀 윤곽선",
+        DrawingRenderStyle.AutoColor => "원본 색상",
+        _ => "자동"
+    };
+
+    private static string QualityLabel(DrawingQualityPreset quality) => quality switch
+    {
+        DrawingQualityPreset.FastDraft => "빠른 초안",
+        DrawingQualityPreset.High => "고품질",
+        DrawingQualityPreset.OriginalPriority => "원본 우선",
+        _ => "균형"
+    };
 
     private static string FormatDuration(TimeSpan duration)
         => duration.TotalHours >= 1
@@ -221,6 +238,7 @@ public sealed class DrawingSessionController : IDisposable
         DrawingMode mode,
         int maximumColors,
         DrawingRenderStyle renderStyle,
+        DrawingQualityPreset quality,
         double speedMultiplier,
         bool smartSubjectEnabled,
         IProgress<string>? status = null,
@@ -240,6 +258,11 @@ public sealed class DrawingSessionController : IDisposable
         if (!Enum.IsDefined(renderStyle))
         {
             throw new ArgumentOutOfRangeException(nameof(renderStyle));
+        }
+
+        if (!Enum.IsDefined(quality))
+        {
+            throw new ArgumentOutOfRangeException(nameof(quality));
         }
 
         if (!double.IsFinite(speedMultiplier) || speedMultiplier is < 0.5d or > 10d)
@@ -264,23 +287,31 @@ public sealed class DrawingSessionController : IDisposable
         var requestedBounds = CurrentProfile.Canvas.IsCalibrated
             ? new PixelSize(CurrentProfile.Canvas.LogicalWidth, CurrentProfile.Canvas.LogicalHeight)
             : new PixelSize(512, 512);
-        // 416 logical pixels retain facial and silhouette detail while
-        // avoiding thousands of sub-pixel moves that the game cannot display.
-        var analysisBounds = renderStyle == DrawingRenderStyle.LineArt
-            ? new PixelSize(Math.Min(416, requestedBounds.Width), Math.Min(416, requestedBounds.Height))
-            : requestedBounds;
+        var qualitySettings = QualitySettings.For(quality, renderStyle == DrawingRenderStyle.AutoColor);
+        var analysisBounds = new PixelSize(
+            Math.Min(qualitySettings.MaximumDimension, requestedBounds.Width),
+            Math.Min(qualitySettings.MaximumDimension, requestedBounds.Height));
         var target = FitWithin(
             new PixelSize(processingSource.Width, processingSource.Height),
             analysisBounds);
 
         status?.Report("색상과 해상도를 최적화하는 중입니다…");
         ImageProcessingResult image;
-        if (renderStyle == DrawingRenderStyle.LineArt)
+        if (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt)
         {
             image = await Task.Run(() =>
             {
                 var resized = ImageResampler.Resize(processingSource, target);
-                var lineArt = LineArtProcessor.Extract(resized);
+                var lineArt = renderStyle == DrawingRenderStyle.NaturalLineArt
+                    ? NaturalLineArtProcessor.Extract(resized, new NaturalLineArtOptions
+                    {
+                        DetailLevel = qualitySettings.DetailLevel,
+                        MinimumComponentPixels = qualitySettings.MinimumComponentPixels
+                    })
+                    : LineArtProcessor.Extract(resized, new LineArtOptions
+                    {
+                        MinimumComponentPixels = qualitySettings.MinimumComponentPixels
+                    });
                 var palette = new ColorPalette(new[] { RgbColor.Black }, "line-art");
                 var quantized = _quantizer.Quantize(lineArt, palette, new QuantizationOptions
                 {
@@ -321,7 +352,7 @@ public sealed class DrawingSessionController : IDisposable
         status?.Report("그리기 경로와 예상 시간을 계산하는 중입니다…");
         var plannerOptions = new DrawingPlannerOptions
         {
-            Mode = renderStyle == DrawingRenderStyle.LineArt && mode == DrawingMode.Auto
+            Mode = (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt) && mode == DrawingMode.Auto
                 ? DrawingMode.CleanStroke
                 : mode,
             MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond * speedMultiplier,
@@ -329,7 +360,9 @@ public sealed class DrawingSessionController : IDisposable
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
             ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
-            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 38 : 37
+            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 38 : 37,
+            StrokeSimplificationTolerancePixels = qualitySettings.SimplificationTolerance,
+            MinimumStrokeLengthPixels = qualitySettings.MinimumStrokeLength
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
@@ -346,7 +379,10 @@ public sealed class DrawingSessionController : IDisposable
             facePriorityApplied = true;
         }
 
-        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan);
+        var previewBrushSize = renderStyle == DrawingRenderStyle.NaturalLineArt && planning.Plan.Mode == DrawingMode.CleanStroke
+            ? qualitySettings.PreferredBrushSizePixels
+            : 1;
+        var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan, previewBrushSize);
         return new PreparedDrawing(
             sourcePath,
             image,
@@ -355,6 +391,7 @@ public sealed class DrawingSessionController : IDisposable
             subjectFocus,
             maximumColors,
             renderStyle,
+            quality,
             speedMultiplier,
             smartSubjectEnabled,
             facePriorityApplied);
@@ -407,15 +444,21 @@ public sealed class DrawingSessionController : IDisposable
         // Exact-color raster modes need the smallest calibrated brush as well;
         // a wider default brush overwrites adjacent rows and destroys the
         // quantized preview even when every HEX value is correct.
-        var preferredBrushSize = prepared.RenderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.AutoColor ||
-            prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
-            ? PodiumsProfileSettings.ReadControlLayout(CurrentProfile).MinimumBrushSizePixels
-            : (int?)null;
+        var controlLayout = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
+        var preferredBrushSize = prepared.RenderStyle == DrawingRenderStyle.NaturalLineArt && prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
+            ? Math.Clamp(
+                QualitySettings.For(prepared.Quality, color: false).PreferredBrushSizePixels,
+                controlLayout.MinimumBrushSizePixels,
+                controlLayout.MaximumBrushSizePixels)
+            : prepared.RenderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.AutoColor ||
+                prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
+                ? controlLayout.MinimumBrushSizePixels
+                : (int?)null;
         var hooks = new PodiumsExecutionHooks(
             CurrentProfile,
             context,
             preferredBrushSize,
-            selectColors: false);
+            selectColors: prepared.RenderStyle == DrawingRenderStyle.AutoColor);
         lock (_executionLock)
         {
             _activeInput = input;
@@ -438,6 +481,9 @@ public sealed class DrawingSessionController : IDisposable
                     PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 3 : 3,
                     PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 14,
                     MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 18,
+                    MaximumMoveStepPixels = QualitySettings.For(
+                        prepared.Quality,
+                        prepared.RenderStyle == DrawingRenderStyle.AutoColor).MaximumMoveStepPixels,
                     Hooks = hooks,
                     RequireForegroundTarget = true
                 },
@@ -455,6 +501,24 @@ public sealed class DrawingSessionController : IDisposable
             executor.Dispose();
             input.Dispose();
         }
+    }
+
+    private sealed record QualitySettings(
+        int MaximumDimension,
+        double DetailLevel,
+        int MinimumComponentPixels,
+        double SimplificationTolerance,
+        double MinimumStrokeLength,
+        int MaximumMoveStepPixels,
+        int PreferredBrushSizePixels)
+    {
+        public static QualitySettings For(DrawingQualityPreset quality, bool color) => quality switch
+        {
+            DrawingQualityPreset.FastDraft => new(color ? 96 : 288, 0.46d, 9, 1.35d, 5d, 8, 3),
+            DrawingQualityPreset.High => new(color ? 192 : 448, 0.76d, 4, 0.55d, 2.5d, 4, 2),
+            DrawingQualityPreset.OriginalPriority => new(color ? 256 : 512, 0.9d, 3, 0.35d, 2d, 3, 1),
+            _ => new(color ? 144 : 384, 0.62d, 6, 0.85d, 3.5d, 6, 2)
+        };
     }
 
     public void TogglePause()

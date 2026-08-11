@@ -26,10 +26,13 @@ public partial class MainPageViewModel : ObservableObject
     public partial string? SelectedImagePath { get; set; }
 
     [ObservableProperty]
-    public partial string SelectedMode { get; set; } = "스마트 고속 선화";
+    public partial string SelectedMode { get; set; } = "자연스러운 펜선";
 
     [ObservableProperty]
-    public partial string SelectedRenderStyle { get; set; } = "검정 선화";
+    public partial string SelectedRenderStyle { get; set; } = "자연스러운 펜선";
+
+    [ObservableProperty]
+    public partial string SelectedQuality { get; set; } = "균형";
 
     [ObservableProperty]
     public partial string SelectedSpeed { get; set; } = "매우 빠르게";
@@ -74,6 +77,9 @@ public partial class MainPageViewModel : ObservableObject
     public partial bool IsProfileCalibrated { get; set; }
 
     [ObservableProperty]
+    public partial bool IsColorToolsCalibrated { get; set; }
+
+    [ObservableProperty]
     public partial bool IsCalibrating { get; set; }
 
     [ObservableProperty]
@@ -83,7 +89,7 @@ public partial class MainPageViewModel : ObservableObject
     public partial string PlanSummary { get; set; } = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";
 
     [ObservableProperty]
-    public partial double MaximumColors { get; set; } = 128d;
+    public partial double MaximumColors { get; set; } = 16d;
 
     [ObservableProperty]
     public partial double LogicalWidth { get; set; } = 512d;
@@ -102,7 +108,9 @@ public partial class MainPageViewModel : ObservableObject
     public bool CanChangeImage => !IsBusy &&
         Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
 
-    public bool CanStart => HasImage && IsProfileCalibrated && !IsBusy && !IsCalibrating &&
+    public bool CanStart => HasImage && IsProfileCalibrated &&
+        (SelectedMode is not "원본 색상" and not "픽셀 컬러" || IsColorToolsCalibrated) &&
+        !IsBusy && !IsCalibrating &&
         Stage is WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed;
 
     public bool CanPause => Stage is WorkspaceStage.Running or WorkspaceStage.Paused;
@@ -111,14 +119,24 @@ public partial class MainPageViewModel : ObservableObject
 
     public bool IsPaused => Stage == WorkspaceStage.Paused;
 
-    public string ModeDescription =>
-        $"{SelectedMode}: 원본의 중요한 경계를 깨끗한 한 번의 선으로 정돈합니다. 떨어진 윤곽은 반드시 마우스를 놓고 이동합니다.";
+    public string ModeDescription => SelectedMode switch
+    {
+        "정밀 윤곽선" => "경계 대비를 세밀하게 추적합니다. 로고·도형·이미 선화인 원본에 적합합니다.",
+        "원본 펜선 보존" => "검은 필압 영역의 굵기와 눈·속눈썹 모양을 보존합니다. 가장 비슷하지만 획 수가 늘어납니다.",
+        "원본 색상" => "대표 색을 HEX 입력란에 자동 입력하고 같은 색 영역을 빠른 선으로 채웁니다.",
+        "픽셀 컬러" => "형태를 픽셀 단위로 보존합니다. 작은 아이콘과 도트 그림에 적합합니다.",
+        "자동 추천" => "사진과 일러스트를 판별해 자연스러운 펜선을 우선 적용합니다.",
+        _ => "암부 중심선을 한 번씩 이어 그려 이중선과 털선을 줄입니다. 인물·애니 캐릭터에 권장합니다."
+    };
+
+    public string QualityDescription =>
+        $"{SelectedQuality}: 미리보기와 실제 실행 경로의 해상도·곡선 정밀도·게임 입력 간격을 함께 조절합니다.";
 
     public string SpeedDescription =>
         $"{SelectedSpeed}: 게임이 놓치지 않는 프레임 동기화 최대 안전 속도를 자동 적용합니다.";
 
     public string ProfileStatusLabel => IsProfileCalibrated
-        ? "캔버스 영역 저장됨"
+        ? IsColorToolsCalibrated ? "캔버스 · 도구 · HEX 저장됨" : "캔버스 저장됨 · 색상 도구 설정 필요"
         : "캔버스 연결 필요";
 
     public bool IsExecutionPanelVisible =>
@@ -208,9 +226,21 @@ public partial class MainPageViewModel : ObservableObject
         OnPropertyChanged(nameof(ProfileStatusLabel));
     }
 
+    partial void OnIsColorToolsCalibratedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(ProfileStatusLabel));
+    }
+
     partial void OnSelectedModeChanged(string value)
     {
         OnPropertyChanged(nameof(ModeDescription));
+        OnPropertyChanged(nameof(CanStart));
+    }
+
+    partial void OnSelectedQualityChanged(string value)
+    {
+        OnPropertyChanged(nameof(QualityDescription));
     }
 
     partial void OnSelectedSpeedChanged(string value)
@@ -250,10 +280,11 @@ public partial class MainPageViewModel : ObservableObject
         IsBusy = false;
     }
 
-    public void SetProfileState(string name, bool calibrated)
+    public void SetProfileState(string name, bool calibrated, bool colorToolsCalibrated = false)
     {
         ProfileName = name;
         IsProfileCalibrated = calibrated;
+        IsColorToolsCalibrated = colorToolsCalibrated;
     }
 
     public void SetExecutionState(DrawingExecutionState state, string message)
@@ -289,11 +320,12 @@ public partial class MainPageViewModel : ObservableObject
     {
         SelectedImagePath = null;
         SelectedImageName = "이미지가 선택되지 않았습니다.";
-        SelectedMode = "스마트 고속 선화";
-        SelectedRenderStyle = "검정 선화";
+        SelectedMode = "자연스러운 펜선";
+        SelectedRenderStyle = "자연스러운 펜선";
+        SelectedQuality = "균형";
         SelectedSpeed = "매우 빠르게";
         SmartSubjectEnabled = true;
-        MaximumColors = 128d;
+        MaximumColors = 16d;
         Progress = 0d;
         PlanSummary = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";
         BusyMessage = "준비 중…";

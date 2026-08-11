@@ -115,6 +115,7 @@ public sealed class WindowsHotkeyService : IWindowsHotkeyService, IDisposable
         => key switch
         {
             InputKey.Escape => 0x1B,
+            InputKey.F5 => 0x74,
             InputKey.F6 => 0x75,
             InputKey.F7 => 0x76,
             InputKey.F8 => 0x77,

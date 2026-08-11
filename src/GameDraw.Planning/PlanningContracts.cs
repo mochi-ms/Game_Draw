@@ -32,6 +32,10 @@ public sealed record DrawingPlannerOptions
 
     public double PenUpMovementMultiplier { get; init; } = 1d;
 
+    public double StrokeSimplificationTolerancePixels { get; init; } = 0.9d;
+
+    public double MinimumStrokeLengthPixels { get; init; } = 3d;
+
     public void Validate()
     {
         if (!Enum.IsDefined(Mode))
@@ -67,6 +71,16 @@ public sealed record DrawingPlannerOptions
         if (!double.IsFinite(PenUpMovementMultiplier) || PenUpMovementMultiplier < 0d)
         {
             throw new ArgumentOutOfRangeException(nameof(PenUpMovementMultiplier));
+        }
+
+        if (!double.IsFinite(StrokeSimplificationTolerancePixels) || StrokeSimplificationTolerancePixels < 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(StrokeSimplificationTolerancePixels));
+        }
+
+        if (!double.IsFinite(MinimumStrokeLengthPixels) || MinimumStrokeLengthPixels < 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MinimumStrokeLengthPixels));
         }
     }
 }

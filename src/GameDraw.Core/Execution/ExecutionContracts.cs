@@ -34,6 +34,13 @@ public sealed record DrawingExecutionOptions
 
     public int MinimumPenDownMilliseconds { get; init; } = 20;
 
+    /// <summary>
+    /// Maximum distance between mouse-move messages while the pen is down.
+    /// Games sample cursor input frame-by-frame, so an instantaneous jump
+    /// between two distant vector points can otherwise appear as a dot.
+    /// </summary>
+    public int MaximumMoveStepPixels { get; init; } = 6;
+
     public bool RequireForegroundTarget { get; init; } = true;
 
     public IDrawingExecutionHooks? Hooks { get; init; }
@@ -78,6 +85,11 @@ public sealed record DrawingExecutionOptions
         if (MinimumPenDownMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumPenDownMilliseconds));
+        }
+
+        if (MaximumMoveStepPixels is < 1 or > 64)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumMoveStepPixels));
         }
     }
 }

@@ -25,6 +25,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     public ExecutionPanelWindow()
     {
         Title = "GameDraw 실행 상태";
+        ExtendsContentIntoTitleBar = true;
         _status = new TextBlock
         {
             Text = "Roblox로 전환하세요.",
@@ -62,7 +63,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         content.Children.Add(_progress);
         content.Children.Add(new TextBlock
         {
-            Text = "F7  일시 정지/재개     F8  즉시 중지",
+            Text = "F5 시작  ·  F7 일시 정지/재개  ·  F8 즉시 중지",
             FontSize = 12,
             Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(210, 203, 213, 225)),
             TextWrapping = TextWrapping.NoWrap
@@ -98,6 +99,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         }
 
         ApplyRoundedCorners();
+        ClipWindowToRoundedRectangle();
 
         Closed += (_, _) => _disposed = true;
     }
@@ -159,8 +161,31 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         var handle = WindowNative.GetWindowHandle(this);
         var preference = 3;
         _ = DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
+        // Windows 11 can retain a square non-client outline even when the
+        // title bar is hidden. DWMWA_COLOR_NONE removes that outer border.
+        var noBorderColor = unchecked((int)0xFFFFFFFE);
+        _ = DwmSetWindowAttribute(handle, 34, ref noBorderColor, sizeof(int));
+    }
+
+    private void ClipWindowToRoundedRectangle()
+    {
+        var handle = WindowNative.GetWindowHandle(this);
+        var region = CreateRoundRectRgn(0, 0, 421, 191, 28, 28);
+        if (region != nint.Zero && SetWindowRgn(handle, region, true) == 0)
+        {
+            _ = DeleteObject(region);
+        }
     }
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(nint window, int attribute, ref int value, int valueSize);
+
+    [DllImport("gdi32.dll")]
+    private static extern nint CreateRoundRectRgn(int left, int top, int right, int bottom, int ellipseWidth, int ellipseHeight);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(nint window, nint region, bool redraw);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(nint value);
 }

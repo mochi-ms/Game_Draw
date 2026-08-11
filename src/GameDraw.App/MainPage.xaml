@@ -17,6 +17,7 @@
 
     <Page.KeyboardAccelerators>
         <KeyboardAccelerator Key="T" Modifiers="Menu" Invoked="Theme_Invoked" />
+        <KeyboardAccelerator Key="F5" Invoked="StartExecution_Invoked" />
         <KeyboardAccelerator Key="F7" Invoked="PauseResume_Invoked" />
         <KeyboardAccelerator Key="F8" Invoked="StopExecution_Invoked" />
         <KeyboardAccelerator Key="Escape" Invoked="StopExecution_Invoked" />
@@ -232,7 +233,7 @@
                             <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
                                 <StackPanel Spacing="2">
                                     <TextBlock Text="4  그리기 시작" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="F7 일시정지 · F8 중지" Style="{ThemeResource MutedTextBlockStyle}" />
+                                    <TextBlock Text="F5 시작 · F7 일시정지 · F8 중지" Style="{ThemeResource MutedTextBlockStyle}" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -378,11 +379,15 @@
                                     Foreground="{ThemeResource PrimaryBrush}"
                                     FontWeight="SemiBold" />
                             </StackPanel>
-                            <Grid ColumnSpacing="8">
+                            <Grid ColumnSpacing="8" RowSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
                                 <ComboBox
                                     Header="캔버스 비율"
                                     SelectedItem="{x:Bind ViewModel.SelectedCanvasAspect, Mode=TwoWay}"
@@ -399,10 +404,17 @@
                                     Click="ProfileSetup_Click"
                                     Content="영역 드래그"
                                     Padding="14,8" />
+                                <Button
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Click="ToolSetup_Click"
+                                    Content="도구 · 브러시 · HEX 위치 설정 (F6)"
+                                    HorizontalAlignment="Stretch"
+                                    Padding="14,8" />
                             </Grid>
                             <TextBlock
                                 x:Name="CalibrationHint"
-                                Text="흰 그림판 영역만 드래그하면 됩니다. 색상이나 HEX 위치는 사용하지 않습니다."
+                                Text="영역은 박스로 드래그합니다. 색상 모드는 연필·브러시·HEX 위치를 한 번 저장해야 합니다."
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                         </StackPanel>
@@ -411,12 +423,36 @@
                     <Border Grid.Row="0" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
                             <TextBlock Text="2  분석 설정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                            <Border Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,9">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="스마트 고속 선화 · 자동" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="원본 윤곽 보존 · 연결선 방지 · 최대 안전 속도" Style="{ThemeResource MutedTextBlockStyle}" />
-                                </StackPanel>
-                            </Border>
+                            <Grid ColumnSpacing="10" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ComboBox Header="표현 방식" SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>자동 추천</x:String>
+                                    <x:String>자연스러운 펜선</x:String>
+                                    <x:String>원본 펜선 보존</x:String>
+                                    <x:String>정밀 윤곽선</x:String>
+                                    <x:String>원본 색상</x:String>
+                                    <x:String>픽셀 컬러</x:String>
+                                </ComboBox>
+                                <ComboBox Grid.Column="1" Header="그림 품질" SelectedItem="{x:Bind ViewModel.SelectedQuality, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>빠른 초안</x:String>
+                                    <x:String>균형</x:String>
+                                    <x:String>고품질</x:String>
+                                    <x:String>원본 우선</x:String>
+                                </ComboBox>
+                                <ComboBox Grid.Row="1" Header="실행 속도" SelectedItem="{x:Bind ViewModel.SelectedSpeed, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>안정</x:String>
+                                    <x:String>빠르게</x:String>
+                                    <x:String>매우 빠르게</x:String>
+                                </ComboBox>
+                                <NumberBox Grid.Row="1" Grid.Column="1" Header="최대 색상 (색상 모드)" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" Minimum="2" Maximum="64" SpinButtonPlacementMode="Compact" />
+                            </Grid>
                             <ToggleSwitch
                                 Header="스마트 피사체"
                                 OffContent="원본 유지"
@@ -430,6 +466,10 @@
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                                 <TextBlock
                                     Text="{x:Bind ViewModel.SpeedDescription, Mode=OneWay}"
+                                    TextWrapping="Wrap"
+                                    Style="{ThemeResource MutedTextBlockStyle}" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.QualityDescription, Mode=OneWay}"
                                     TextWrapping="Wrap"
                                     Style="{ThemeResource MutedTextBlockStyle}" />
                             </StackPanel>
@@ -474,7 +514,7 @@
                             <Button
                                 Grid.Row="3"
                                 Click="StartDrawing_Click"
-                                Content="4  Podiums에 그리기 시작"
+                                Content="F5 · Podiums에 그리기 시작"
                                 IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
                                 HorizontalAlignment="Stretch"
                                 Padding="16,12"
@@ -548,10 +588,19 @@
                             </Grid>
                             <Border Grid.Row="2" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,9">
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="스마트 고속 선화 · 자동" FontWeight="SemiBold" />
-                                    <TextBlock Text="원본 윤곽 보존 · 연결선 방지 · 최대 안전 속도" Style="{ThemeResource MutedTextBlockStyle}" />
+                                    <TextBlock Text="{x:Bind ViewModel.SelectedMode, Mode=OneWay}" FontWeight="SemiBold" />
+                                    <TextBlock Text="표현 방식과 품질은 아래에서 바로 바꿀 수 있습니다." Style="{ThemeResource MutedTextBlockStyle}" />
                                 </StackPanel>
                             </Border>
+                            <Grid Grid.Row="3" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <ComboBox SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>자동 추천</x:String><x:String>자연스러운 펜선</x:String><x:String>원본 펜선 보존</x:String><x:String>정밀 윤곽선</x:String><x:String>원본 색상</x:String><x:String>픽셀 컬러</x:String>
+                                </ComboBox>
+                                <ComboBox Grid.Column="1" SelectedItem="{x:Bind ViewModel.SelectedQuality, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                                    <x:String>빠른 초안</x:String><x:String>균형</x:String><x:String>고품질</x:String><x:String>원본 우선</x:String>
+                                </ComboBox>
+                            </Grid>
                             <StackPanel Grid.Row="4" Spacing="4">
                                 <ToggleSwitch
                                     Header="스마트 피사체"
@@ -580,7 +629,8 @@
                                 <x:String>원본 이미지 비율</x:String>
                             </ComboBox>
                             <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
-                            <TextBlock Text="흰 그림판 영역만 지정하면 됩니다. 색상·HEX·스캔라인 설정은 사용하지 않습니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Button Click="ToolSetup_Click" Content="도구 · 브러시 · HEX 위치 설정 (F6)" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <TextBlock Text="색상 모드에서는 HEX 입력란을 클릭한 뒤 Ctrl+A → Delete → 색상 코드 → Enter 순서로 자동 변경합니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12">
                                 <TextBlock Text="캔버스를 지정한 뒤 이미지 탭에서 분석하고, 실행 탭에서 시작하세요. 실행 시 GameDraw는 자동으로 숨겨집니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>
@@ -604,7 +654,7 @@
                             </Grid>
                             <ProgressBar Grid.Row="1" Maximum="1" Value="{x:Bind ViewModel.Progress, Mode=OneWay}" />
                             <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.PlanSummary, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center" Style="{ThemeResource MutedTextBlockStyle}" />
-                            <Button Grid.Row="3" Click="StartDrawing_Click" Content="Podiums에 그리기 시작" IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,12" Style="{StaticResource AccentButtonStyle}" />
+                            <Button Grid.Row="3" Click="StartDrawing_Click" Content="F5 · Podiums에 그리기 시작" IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,12" Style="{StaticResource AccentButtonStyle}" />
                             <Button Grid.Row="4" Click="ResetWorkspace_Click" Content="중지하고 새 작업으로 초기화" HorizontalAlignment="Stretch" Padding="14,10" />
                         </Grid>
                     </Border>

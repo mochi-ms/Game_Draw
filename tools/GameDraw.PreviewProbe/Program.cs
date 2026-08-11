@@ -22,7 +22,7 @@ var decoded = await new ImageDecoder().DecodeFileAsync(args[0]);
 var subject = SubjectFocusProcessor.Process(decoded.Frame);
 var target = FitWithin(new PixelSize(subject.Frame.Width, subject.Frame.Height), new PixelSize(416, 416));
 var resized = ImageResampler.Resize(subject.Frame, target);
-var lineArt = LineArtProcessor.Extract(resized);
+var lineArt = NaturalLineArtProcessor.Extract(resized);
 var palette = new ColorPalette(new[] { RgbColor.Black }, "probe");
 var quantized = new PaletteQuantizer().Quantize(lineArt, palette, new QuantizationOptions
 {
@@ -38,16 +38,34 @@ var planning = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
 var plan = subject.FacePriorityRegion is { } face
     ? DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, face)
     : planning.Plan;
-var preview = DrawingPlanPostProcessor.RenderPreview(plan);
+var preview = DrawingPlanPostProcessor.RenderPreview(plan, 2);
+var filledPlan = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
+{
+    Mode = DrawingMode.HorizontalScanline,
+    MovementPixelsPerSecond = 4_000,
+    PerStrokeSafetyDelayMilliseconds = 38
+}).Plan;
+var filledPreview = DrawingPlanPostProcessor.RenderPreview(filledPlan);
+var hybridPlan = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
+{
+    Mode = DrawingMode.Hybrid,
+    MovementPixelsPerSecond = 4_000,
+    PerStrokeSafetyDelayMilliseconds = 38
+}).Plan;
+var hybridPreview = DrawingPlanPostProcessor.RenderPreview(hybridPlan);
 
 Directory.CreateDirectory(args[1]);
 await SaveAsync(resized, Path.Combine(args[1], "01-subject.png"));
 await SaveAsync(lineArt, Path.Combine(args[1], "02-line-art.png"));
 await SaveAsync(preview, Path.Combine(args[1], "03-execution-path.png"));
+await SaveAsync(filledPreview, Path.Combine(args[1], "04-ink-preserving-path.png"));
+await SaveAsync(hybridPreview, Path.Combine(args[1], "05-hybrid-path.png"));
 Console.WriteLine($"source={decoded.Frame.Width}x{decoded.Frame.Height}");
 Console.WriteLine($"subject={subject.Frame.Width}x{subject.Frame.Height} backgroundRemoved={subject.BackgroundRemoved} cropped={subject.Cropped} person={subject.PersonLikely}");
 Console.WriteLine($"working={target.Width}x{target.Height} opaqueEdges={lineArt.Pixels.Count(pixel => pixel.IsOpaque)}");
 Console.WriteLine($"strokes={plan.Statistics.StrokeCount} points={plan.Statistics.PointCount}");
+Console.WriteLine($"inkStrokes={filledPlan.Statistics.StrokeCount} points={filledPlan.Statistics.PointCount}");
+Console.WriteLine($"hybridStrokes={hybridPlan.Statistics.StrokeCount} points={hybridPlan.Statistics.PointCount}");
 return 0;
 
 static PixelSize FitWithin(PixelSize source, PixelSize bounds)

@@ -209,6 +209,27 @@ public sealed class ImagingPipelineTests
     }
 
     [Fact]
+    public void NaturalLineArtKeepsDarkAuthoredMarkWithoutFillingWhiteBackground()
+    {
+        const int size = 15;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), size * size).ToArray();
+        for (var y = 2; y < size - 2; y++)
+        {
+            for (var x = 6; x <= 8; x++)
+            {
+                pixels[(y * size) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        var result = NaturalLineArtProcessor.Extract(new CoreImageFrame(size, size, pixels));
+
+        Assert.Contains(result.Pixels, pixel => pixel.IsOpaque);
+        Assert.True(result.Pixels.Count(pixel => pixel.IsOpaque) < result.PixelCount / 3);
+        Assert.True(result[7, 7].IsOpaque);
+        Assert.True(result[1, 7].IsTransparent);
+    }
+
+    [Fact]
     public void SmartSubjectRemovesBorderBackgroundAndCropsPortrait()
     {
         const int width = 20;

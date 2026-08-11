@@ -350,33 +350,42 @@ public sealed class WindowsDrawingExecutor :
             for (var index = 1; index < stroke.Points.Count; index++)
             {
                 var next = stroke.Points[index];
-                await DelayForMovementAsync(previous, next, logicalSize, options, cancellationToken).ConfigureAwait(false);
-                await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
-                if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
-                {
-                    await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
-                    releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
-                }
-
-                await _input.MoveToAsync(_binding.Map(next), cancellationToken).ConfigureAwait(false);
+                await MovePenSegmentAsync(previous, next).ConfigureAwait(false);
                 previous = next;
             }
 
             if (stroke.IsClosed && stroke.Points.Count > 1)
             {
-                await DelayForMovementAsync(previous, stroke.Points[0], logicalSize, options, cancellationToken).ConfigureAwait(false);
-                await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-                cancellationToken.ThrowIfCancellationRequested();
-                await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
-                if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
-                {
-                    await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
-                    releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
-                }
+                await MovePenSegmentAsync(previous, stroke.Points[0]).ConfigureAwait(false);
+            }
 
-                await _input.MoveToAsync(_binding.Map(stroke.Points[0]), cancellationToken).ConfigureAwait(false);
+            async ValueTask MovePenSegmentAsync(NormalizedPoint from, NormalizedPoint to)
+            {
+                await DelayForMovementAsync(from, to, logicalSize, options, cancellationToken).ConfigureAwait(false);
+                var screenFrom = _binding.Map(from);
+                var screenTo = _binding.Map(to);
+                var deltaX = screenTo.X - screenFrom.X;
+                var deltaY = screenTo.Y - screenFrom.Y;
+                var distance = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+                var steps = Math.Max(1, (int)Math.Ceiling(distance / options.MaximumMoveStepPixels));
+                for (var step = 1; step <= steps; step++)
+                {
+                    await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+                    if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
+                    {
+                        await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+                        releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
+                    }
+
+                    var amount = step / (double)steps;
+                    await _input.MoveToAsync(
+                        new ScreenPoint(
+                            (int)Math.Round(screenFrom.X + (deltaX * amount)),
+                            (int)Math.Round(screenFrom.Y + (deltaY * amount))),
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
         }
         finally

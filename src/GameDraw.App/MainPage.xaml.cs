@@ -73,6 +73,7 @@ public sealed partial class MainPage : Page, IDisposable
         {
             _hotkeys = new WindowsHotkeyService(App.WindowHandle);
             _hotkeys.HotkeyPressed += Hotkeys_HotkeyPressed;
+            _hotkeys.Register(InputKey.F5);
             await App.DrawingSession.InitializeAsync();
             var profile = App.DrawingSession.CurrentProfile;
             SetProfileState(profile);
@@ -174,12 +175,15 @@ public sealed partial class MainPage : Page, IDisposable
     private async void ShowHelp_Click(object sender, RoutedEventArgs e)
     {
         var content = new StackPanel { Spacing = 10, MaxWidth = 620 };
-        content.Children.Add(CreateHelpSection("빠른 시작", "① 이미지 선택  →  ② 필요하면 스마트 피사체 켜기  →  ③ 이미지 분석  →  ④ 캔버스 영역 드래그  →  ⑤ 그리기 시작. 선화 방식과 최대 안전 속도는 자동 적용됩니다."));
+        content.Children.Add(CreateHelpSection("빠른 시작", "① 이미지 선택 → ② 표현 방식·품질 선택 → ③ 이미지 분석 → ④ 캔버스 영역 드래그 → ⑤ F5로 시작합니다. F7은 일시정지, F8은 즉시 중지입니다."));
         content.Children.Add(CreateHelpSection("미리보기 기준", "분석 뒤 보이는 ‘실행 경로 미리보기’가 실제 마우스가 따라갈 선입니다. 원본 픽셀이 아니라 실행 스트로크를 직접 렌더링하므로 결과를 시작 전에 확인할 수 있습니다."));
-        content.Children.Add(CreateHelpSection("스마트 고속 선화", "노이즈와 짧은 점을 제거하고 실제로 연결된 윤곽만 연속 획으로 그립니다. 서로 떨어진 윤곽 사이에서는 반드시 마우스를 놓기 때문에 화면을 가로지르는 연결선이 생기지 않습니다. Podiums 브러시는 자동으로 최소 굵기를 사용합니다."));
+        content.Children.Add(CreateHelpSection("자연스러운 펜선", "인물·애니 캐릭터 권장 모드입니다. 굵은 원본 선의 양쪽 테두리가 아니라 암부의 중심선을 뽑아, 작가가 한 번씩 선을 긋는 것처럼 이중선과 털선을 줄입니다."));
+        content.Children.Add(CreateHelpSection("정밀 윤곽선", "색·밝기 경계를 세밀하게 따는 모드입니다. 로고, 도형, 이미 완성된 흑백 선화에 적합하지만 사진에서는 작은 질감도 선으로 잡힐 수 있습니다."));
+        content.Children.Add(CreateHelpSection("원본 색상 · 픽셀 컬러", "원본 색상은 같은 색 구간을 빠른 가로 획으로 채우고, 픽셀 컬러는 작은 도트 그림을 점 단위로 보존합니다. 연결 탭에서 도구·브러시·HEX 위치를 먼저 저장해야 합니다. 색 변경은 HEX 입력란 클릭 → Ctrl+A → Delete → 코드 입력 → Enter 순서로 자동 실행됩니다."));
+        content.Children.Add(CreateHelpSection("그림 품질", "빠른 초안은 선 수를 크게 줄이고, 균형은 기본 권장값, 고품질은 얼굴·머리카락 세부를 늘리며, 원본 우선은 가장 촘촘한 경로를 만듭니다. 선택에 따라 미리보기와 실제 마우스 경로가 함께 바뀝니다."));
         content.Children.Add(CreateHelpSection("스마트 피사체 · 로컬 AI", "테두리에 연결된 배경을 투명하게 제거하고 피사체 중심으로 크롭합니다. 인물 구도로 판단되면 얼굴·눈이 있을 가능성이 높은 위쪽 중심 영역의 선을 먼저 그립니다. 모든 분석은 PC 안에서 처리되며 이미지가 업로드되지 않습니다."));
-        content.Children.Add(CreateHelpSection("속도", "색상 변경과 픽셀 점찍기 비용을 없애고, 입력이 누락되지 않는 범위에서 가장 빠른 속도를 자동 적용합니다. 분석 단계에서 작은 잡선과 중복 경로를 줄여 실제 마우스 이동량도 함께 줄입니다."));
-        content.Children.Add(CreateHelpSection("연결과 안전", "캔버스 비율을 고르고 흰 그림판만 드래그해 지정합니다. 실행 시 Roblox가 활성화되며 F7은 일시정지/재개, F8은 즉시 마우스를 놓고 중지합니다. ‘작업 초기화’는 진행 중 작업도 중지합니다."));
+        content.Children.Add(CreateHelpSection("속도와 정확도", "매우 빠르게에서도 긴 벡터를 순간 이동하지 않고 게임이 인식할 수 있는 짧은 간격으로 보간합니다. 품질을 올리면 이 간격도 촘촘해져 더 정확하지만 시간이 늘어납니다."));
+        content.Children.Add(CreateHelpSection("연결과 안전", "캔버스 비율을 고르고 흰 그림판만 드래그해 지정합니다. 실행 시 Roblox가 활성화되며 F5 시작, F7 일시정지/재개, F8 즉시 마우스 해제·중지입니다. ‘작업 초기화’는 진행 중 작업도 중지합니다."));
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -411,6 +415,59 @@ public sealed partial class MainPage : Page, IDisposable
     private async void ProfileSetup_Click(object sender, RoutedEventArgs e)
         => await BeginProfileSetupAsync();
 
+    private async void ToolSetup_Click(object sender, RoutedEventArgs e)
+        => await BeginToolSetupAsync();
+
+    private async Task BeginToolSetupAsync()
+    {
+        if (ViewModel.IsBusy || ViewModel.IsCalibrating || App.DrawingSession.IsRunning ||
+            !App.DrawingSession.CurrentProfile.Canvas.IsCalibrated)
+        {
+            return;
+        }
+
+        ViewModel.BeginLoading("Roblox Podiums 창을 찾는 중…");
+        try
+        {
+            var target = await App.DrawingSession.FindPodiumsTargetAsync();
+            if (target is null)
+            {
+                ViewModel.StatusMessage = "열려 있는 Roblox Podiums 창을 찾지 못했습니다.";
+                ViewModel.Stage = WorkspaceStage.Failed;
+                return;
+            }
+
+            _ = await App.DrawingSession.ActivateTargetAsync(target);
+            var canvas = App.DrawingSession.CurrentProfile.Canvas;
+            _calibrationTarget = target;
+            _calibration = new PodiumsCalibrationSession(new PodiumsCalibrationOptions
+            {
+                InitialCanvasBounds = canvas.Bounds,
+                LogicalWidth = canvas.LogicalWidth,
+                LogicalHeight = canvas.LogicalHeight,
+                RequireControls = true,
+                IncludeFillTool = true,
+                IncludeBrushSize = true,
+                IncludeColorControls = true
+            });
+            _hotkeys?.Register(InputKey.F6);
+            ViewModel.IsCalibrating = true;
+            ViewModel.Stage = WorkspaceStage.Configure;
+            UpdateCalibrationMessage();
+            ViewModel.StatusMessage = "도구 설정을 시작했습니다. 안내 위치에 마우스를 놓고 F6을 누르세요.";
+        }
+        catch (Exception exception)
+        {
+            FinishCalibration(false);
+            ViewModel.Stage = WorkspaceStage.Failed;
+            ViewModel.StatusMessage = $"도구 설정을 시작하지 못했습니다: {exception.Message}";
+        }
+        finally
+        {
+            ViewModel.EndLoading();
+        }
+    }
+
     private async Task BeginProfileSetupAsync()
     {
         if (ViewModel.IsBusy || ViewModel.IsCalibrating || App.DrawingSession.IsRunning)
@@ -466,7 +523,7 @@ public sealed partial class MainPage : Page, IDisposable
             var profile = await App.DrawingSession.SaveCalibrationAsync(result, ViewModel.ProfileName);
             SetProfileState(profile);
             ViewModel.Stage = _preparedDrawing is null ? WorkspaceStage.Configure : WorkspaceStage.Ready;
-            ViewModel.StatusMessage = "드래그한 캔버스 영역을 저장했습니다. 색상·HEX 설정 없이 바로 선화를 실행할 수 있습니다.";
+            ViewModel.StatusMessage = "드래그한 캔버스 영역을 저장했습니다. 색상 모드는 도구·브러시·HEX 위치도 설정하세요.";
         }
         catch (Exception exception)
         {
@@ -516,6 +573,7 @@ public sealed partial class MainPage : Page, IDisposable
                 SelectedDrawingMode(),
                 SafeWholeNumber(ViewModel.MaximumColors, 128, 2, 256),
                 SelectedRenderStyle(),
+                SelectedQuality(),
                 SelectedSpeedMultiplier(),
                 ViewModel.SmartSubjectEnabled,
                 status,
@@ -560,6 +618,9 @@ public sealed partial class MainPage : Page, IDisposable
     }
 
     private async void StartDrawing_Click(object sender, RoutedEventArgs e)
+        => await StartDrawingAsync();
+
+    private async Task StartDrawingAsync()
     {
         if (!ViewModel.CanStart || App.DrawingSession.IsRunning)
         {
@@ -649,6 +710,7 @@ public sealed partial class MainPage : Page, IDisposable
     {
         if (e.PropertyName is nameof(MainPageViewModel.SelectedMode)
             or nameof(MainPageViewModel.SelectedRenderStyle)
+            or nameof(MainPageViewModel.SelectedQuality)
             or nameof(MainPageViewModel.SelectedSpeed)
             or nameof(MainPageViewModel.SmartSubjectEnabled)
             or nameof(MainPageViewModel.MaximumColors)
@@ -755,6 +817,14 @@ public sealed partial class MainPage : Page, IDisposable
         args.Handled = true;
     }
 
+    private async void StartExecution_Invoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        await StartDrawingAsync();
+        args.Handled = true;
+    }
+
     private void Theme_Invoked(
         KeyboardAccelerator sender,
         KeyboardAcceleratorInvokedEventArgs args)
@@ -777,6 +847,9 @@ public sealed partial class MainPage : Page, IDisposable
         {
             switch (e.Key)
             {
+                case InputKey.F5:
+                    await StartDrawingAsync();
+                    break;
                 case InputKey.F6:
                     await CaptureCalibrationPointAsync();
                     break;
@@ -932,11 +1005,36 @@ public sealed partial class MainPage : Page, IDisposable
         _hotkeys?.Unregister(InputKey.F8);
     }
 
-    private static DrawingMode SelectedDrawingMode() => DrawingMode.CleanStroke;
+    private DrawingMode SelectedDrawingMode() => ViewModel.SelectedMode switch
+    {
+        "원본 색상" => DrawingMode.HorizontalScanline,
+        "원본 펜선 보존" => DrawingMode.HorizontalScanline,
+        "픽셀 컬러" => DrawingMode.Pixel,
+        _ => DrawingMode.CleanStroke
+    };
 
-    private static DrawingRenderStyle SelectedRenderStyle() => DrawingRenderStyle.LineArt;
+    private DrawingRenderStyle SelectedRenderStyle() => ViewModel.SelectedMode switch
+    {
+        "정밀 윤곽선" => DrawingRenderStyle.LineArt,
+        "원본 펜선 보존" => DrawingRenderStyle.NaturalLineArt,
+        "원본 색상" or "픽셀 컬러" => DrawingRenderStyle.AutoColor,
+        _ => DrawingRenderStyle.NaturalLineArt
+    };
 
-    private static double SelectedSpeedMultiplier() => 8d;
+    private DrawingQualityPreset SelectedQuality() => ViewModel.SelectedQuality switch
+    {
+        "빠른 초안" => DrawingQualityPreset.FastDraft,
+        "고품질" => DrawingQualityPreset.High,
+        "원본 우선" => DrawingQualityPreset.OriginalPriority,
+        _ => DrawingQualityPreset.Balanced
+    };
+
+    private double SelectedSpeedMultiplier() => ViewModel.SelectedSpeed switch
+    {
+        "안정" => 2d,
+        "빠르게" => 5d,
+        _ => 8d
+    };
 
     private (string Label, double? Ratio) SelectedCanvasAspect()
         => ViewModel.SelectedCanvasAspect switch
@@ -954,7 +1052,10 @@ public sealed partial class MainPage : Page, IDisposable
     private void SetProfileState(GameProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        ViewModel.SetProfileState(profile.Name, profile.Canvas.IsCalibrated);
+        ViewModel.SetProfileState(
+            profile.Name,
+            profile.Canvas.IsCalibrated,
+            PodiumsProfileSettings.ReadControlLayout(profile).HasColorControls);
     }
 
     private static int SafeWholeNumber(double value, int fallback, int minimum, int maximum)

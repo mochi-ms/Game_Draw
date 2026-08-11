@@ -55,6 +55,8 @@ public sealed class PodiumsColorAdapter : IColorAdapter
             await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
             controlHeld = false;
             await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyDownAsync(InputKey.Delete, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(InputKey.Delete, cancellationToken).ConfigureAwait(false);
             await input.TypeTextAsync(color.ToHex(), cancellationToken).ConfigureAwait(false);
             await input.KeyDownAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
             await input.KeyUpAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);

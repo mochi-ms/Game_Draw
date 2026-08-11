@@ -95,6 +95,37 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
+    public async Task ExecutorInterpolatesLongVectorSegmentsForGameSampling()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 101, 101, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.CleanStroke,
+            new PixelSize(101, 101),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0, 0.5), new NormalizedPoint(1, 0.5) })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            ColorChangeDelayMilliseconds = 0,
+            MaximumMoveStepPixels = 10
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.True(input.Moves.Count >= 11, $"Expected interpolated movement but received {input.Moves.Count} moves.");
+        Assert.Equal(new ScreenPoint(100, 50), input.Moves[^1]);
+    }
+
+    [Fact]
     public async Task ForegroundRequirementStopsBeforeInput()
     {
         var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 100, 100, 96) with

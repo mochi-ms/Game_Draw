@@ -140,7 +140,10 @@ public sealed class PodiumsAdapterTests
         Assert.Single(input.Clicks);
         Assert.Contains("key-down:Control", input.Events);
         Assert.Contains("key-up:A", input.Events);
+        Assert.Contains("key-down:Delete", input.Events);
         Assert.Contains("key-down:Enter", input.Events);
+        Assert.True(input.Events.IndexOf("key-up:A") < input.Events.IndexOf("key-down:Delete"));
+        Assert.True(input.Events.IndexOf("key-down:Delete") < input.Events.IndexOf("key-down:Enter"));
         Assert.True(input.ReleaseAllKeysCalls > 0);
     }
 

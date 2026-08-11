@@ -45,9 +45,13 @@ public static class DrawingPlanPostProcessor
             : new DrawingPlan(plan.Mode, plan.LogicalSize, priority.Concat(remainder));
     }
 
-    public static ImageFrame RenderPreview(DrawingPlan plan)
+    public static ImageFrame RenderPreview(DrawingPlan plan, int brushDiameterPixels = 1)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        if (brushDiameterPixels is < 1 or > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(brushDiameterPixels));
+        }
         var width = plan.LogicalSize.Width;
         var height = plan.LogicalSize.Height;
         var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), checked(width * height)).ToArray();
@@ -107,9 +111,24 @@ public static class DrawingPlanPostProcessor
 
         void Paint(int x, int y, RgbColor color)
         {
-            if ((uint)x < (uint)width && (uint)y < (uint)height)
+            var radius = brushDiameterPixels / 2d;
+            var extent = brushDiameterPixels / 2;
+            for (var offsetY = -extent; offsetY <= extent; offsetY++)
             {
-                pixels[(y * width) + x] = RgbaPixel.Opaque(color);
+                for (var offsetX = -extent; offsetX <= extent; offsetX++)
+                {
+                    if ((offsetX * offsetX) + (offsetY * offsetY) > radius * radius)
+                    {
+                        continue;
+                    }
+
+                    var targetX = x + offsetX;
+                    var targetY = y + offsetY;
+                    if ((uint)targetX < (uint)width && (uint)targetY < (uint)height)
+                    {
+                        pixels[(targetY * width) + targetX] = RgbaPixel.Opaque(color);
+                    }
+                }
             }
         }
     }

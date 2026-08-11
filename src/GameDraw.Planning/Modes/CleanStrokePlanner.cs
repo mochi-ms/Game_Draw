@@ -12,9 +12,6 @@ namespace GameDraw.Planning.Modes;
 /// </summary>
 internal static class CleanStrokePlanner
 {
-    private const double SimplificationTolerancePixels = 0.9d;
-    private const double MinimumStrokeLengthPixels = 3d;
-
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
     {
         var strokesByColor = new Dictionary<int, List<DrawingStroke>>();
@@ -24,13 +21,13 @@ internal static class CleanStrokePlanner
             Thin(mask, image.Width, image.Height);
             foreach (var traced in Trace(mask, image.Width, image.Height))
             {
-                if (PathLength(traced.Points, traced.IsClosed) < MinimumStrokeLengthPixels)
+                if (PathLength(traced.Points, traced.IsClosed) < options.MinimumStrokeLengthPixels)
                 {
                     continue;
                 }
 
                 var smoothed = Smooth(traced.Points, traced.IsClosed);
-                var simplified = Simplify(smoothed, SimplificationTolerancePixels);
+                var simplified = Simplify(smoothed, options.StrokeSimplificationTolerancePixels);
                 if (simplified.Count == 0)
                 {
                     continue;

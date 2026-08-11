@@ -240,6 +240,8 @@ public sealed class WindowsInputController : IWindowsInputController, IDisposabl
             InputKey.Control => 0x11,
             InputKey.Enter => 0x0D,
             InputKey.Escape => 0x1B,
+            InputKey.Delete => 0x2E,
+            InputKey.F5 => 0x74,
             InputKey.F6 => 0x75,
             InputKey.F7 => 0x76,
             InputKey.F8 => 0x77,

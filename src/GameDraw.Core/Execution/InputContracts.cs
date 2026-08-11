@@ -17,7 +17,9 @@ public enum InputKey
     F6 = 3,
     F7 = 4,
     F8 = 5,
-    A = 6
+    A = 6,
+    F5 = 7,
+    Delete = 8
 }
 
 public interface IInputController
