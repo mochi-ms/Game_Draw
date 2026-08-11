@@ -1,7 +1,9 @@
 using System.ComponentModel;
+using GameDraw.Core.Presentation;
 using GameDraw_App.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
@@ -11,8 +13,9 @@ using WinRT.Interop;
 namespace GameDraw_App;
 
 /// <summary>
-/// Phase-one workspace shell. It owns image selection and responsive layout;
-/// planning and input execution are supplied by later layers.
+/// Responsive workspace shell. It owns image selection, theme/layout policy,
+/// and presentation feedback; planning and native input execution remain in
+/// the core/automation layers.
 /// </summary>
 public sealed partial class MainPage : Page
 {
@@ -35,6 +38,7 @@ public sealed partial class MainPage : Page
 
     private void Page_Loaded(object sender, RoutedEventArgs e)
     {
+        ApplyTheme(ViewModel.ThemeMode);
         UpdateResponsiveLayout(ActualWidth);
     }
 
@@ -91,6 +95,7 @@ public sealed partial class MainPage : Page
 
     private async Task LoadImageAsync(string path)
     {
+        ViewModel.BeginLoading("이미지를 불러오는 중…");
         try
         {
             if (!IsSupportedImage(path))
@@ -119,7 +124,10 @@ public sealed partial class MainPage : Page
             ViewModel.StatusMessage = $"이미지를 불러오지 못했습니다: {exception.Message}";
         }
 
-        await Task.CompletedTask;
+        finally
+        {
+            ViewModel.EndLoading();
+        }
     }
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -131,6 +139,16 @@ public sealed partial class MainPage : Page
             PreviewImage.Visibility = Visibility.Collapsed;
             EmptyState.Visibility = Visibility.Visible;
         }
+
+        if (e.PropertyName == nameof(MainPageViewModel.ThemeMode))
+        {
+            ApplyTheme(ViewModel.ThemeMode);
+        }
+
+        if (e.PropertyName == nameof(MainPageViewModel.IsExecutionPanelPinned))
+        {
+            ExecutionOverlay.Opacity = ViewModel.IsExecutionPanelPinned ? 1d : 0.88d;
+        }
     }
 
     private void UpdateResponsiveLayout(double width)
@@ -140,10 +158,15 @@ public sealed partial class MainPage : Page
             return;
         }
 
-        var compact = width < 900;
-        WorkspaceLayout.ColumnDefinitions[0].Width = compact
-            ? new GridLength(1, GridUnitType.Star)
-            : new GridLength(2, GridUnitType.Star);
+        ViewModel.SetLayoutWidth(width);
+        var mode = ViewModel.LayoutMode;
+        var compact = mode == ResponsiveLayoutMode.Compact;
+        WorkspaceLayout.ColumnDefinitions[0].Width = mode switch
+        {
+            ResponsiveLayoutMode.Expanded => new GridLength(2, GridUnitType.Star),
+            ResponsiveLayoutMode.Medium => new GridLength(1.35, GridUnitType.Star),
+            _ => new GridLength(1, GridUnitType.Star)
+        };
         WorkspaceLayout.ColumnDefinitions[1].Width = compact
             ? new GridLength(0)
             : new GridLength(1, GridUnitType.Star);
@@ -153,9 +176,50 @@ public sealed partial class MainPage : Page
         WorkspaceLayout.RowDefinitions[1].Height = compact
             ? GridLength.Auto
             : new GridLength(0);
+        RootLayout.Padding = mode switch
+        {
+            ResponsiveLayoutMode.Expanded => new Thickness(32, 28, 32, 36),
+            ResponsiveLayoutMode.Medium => new Thickness(24, 22, 24, 28),
+            _ => new Thickness(16, 18, 16, 24)
+        };
 
         Grid.SetColumn(ControlPanel, compact ? 0 : 1);
         Grid.SetRow(ControlPanel, compact ? 1 : 0);
+        ExecutionOverlay.Margin = compact ? new Thickness(12) : new Thickness(24);
+    }
+
+    private void ApplyTheme(AppThemeMode mode)
+    {
+        RequestedTheme = mode switch
+        {
+            AppThemeMode.Light => ElementTheme.Light,
+            AppThemeMode.Dark => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+    }
+
+    private void PauseResume_Invoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ViewModel.PauseOrResumeExecutionCommand.Execute(null);
+        args.Handled = true;
+    }
+
+    private void Theme_Invoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ViewModel.ToggleThemeCommand.Execute(null);
+        args.Handled = true;
+    }
+
+    private void StopExecution_Invoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        ViewModel.StopExecutionCommand.Execute(null);
+        args.Handled = true;
     }
 
     private static bool IsSupportedImage(string? path)
