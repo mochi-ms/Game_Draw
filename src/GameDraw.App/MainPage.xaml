@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="GameDraw_App.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    AllowDrop="True"
+    Background="{StaticResource PageBackgroundBrush}"
+    DragOver="Page_DragOver"
+    Drop="Page_Drop"
+    Loaded="Page_Loaded"
+    mc:Ignorable="d">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <Grid MaxWidth="1220" Padding="32,28,32,40" HorizontalAlignment="Center" RowSpacing="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" ColumnSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="5">
+                    <TextBlock Text="GAMEDRAW" Style="{StaticResource EyebrowTextStyle}" />
+                    <TextBlock Text="Turn any image into game-ready drawing" FontSize="30" FontWeight="SemiBold" Foreground="#172033" />
+                    <TextBlock Text="Calibrate once. Reuse the same drawing engine across games." Style="{StaticResource MutedTextStyle}" FontSize="14" />
+                </StackPanel>
+                <Button Grid.Column="1" Width="42" Height="42" ToolTipService.ToolTip="Settings" VerticalAlignment="Top">
+                    <FontIcon Glyph="&#xE713;" />
+                </Button>
+            </Grid>
+
+            <InfoBar
+                Grid.Row="1"
+                IsOpen="True"
+                IsClosable="False"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="Informational" />
+
+            <Grid Grid.Row="2" ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardBorderStyle}" MinHeight="300">
+                    <Grid RowSpacing="14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="ORIGINAL" Style="{StaticResource EyebrowTextStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.ImageName, Mode=OneWay}" Style="{StaticResource MutedTextStyle}" />
+                        </StackPanel>
+                        <Grid Grid.Row="1" Background="#F1F3F6" CornerRadius="12" MinHeight="245">
+                            <Image Source="{x:Bind ViewModel.OriginalImageSource, Mode=OneWay}" Stretch="Uniform" Margin="14" />
+                            <StackPanel Visibility="{x:Bind ViewModel.WelcomeVisibility, Mode=OneWay}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                <FontIcon Glyph="&#xE8B9;" FontSize="34" Foreground="#98A2B3" HorizontalAlignment="Center" />
+                                <TextBlock Text="이미지를 선택하거나 여기로 끌어오세요" Style="{StaticResource MutedTextStyle}" />
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="1" Style="{StaticResource CardBorderStyle}" MinHeight="300">
+                    <Grid RowSpacing="14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="PROCESSED PREVIEW" Style="{StaticResource EyebrowTextStyle}" />
+                            <TextBlock Text="실제 팔레트 매핑" Style="{StaticResource MutedTextStyle}" />
+                        </StackPanel>
+                        <Grid Grid.Row="1" Background="#F1F3F6" CornerRadius="12" MinHeight="245">
+                            <Image Source="{x:Bind ViewModel.ProcessedImageSource, Mode=OneWay}" Stretch="Uniform" Margin="14" />
+                            <TextBlock
+                                Text="Preview는 프로필의 논리 해상도와 색상 설정을 반영합니다"
+                                Style="{StaticResource MutedTextStyle}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="{x:Bind ViewModel.WelcomeVisibility, Mode=OneWay}" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <Border Grid.Row="3" Style="{StaticResource CardBorderStyle}">
+                <Grid RowSpacing="18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="GAME PROFILE" Style="{StaticResource EyebrowTextStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.ProfileSummary, Mode=OneWay}" Style="{StaticResource SectionTitleStyle}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="새 프로필" Command="{x:Bind ViewModel.CreateDefaultProfileCommand}" />
+                        <Button Grid.Column="2" Content="Configure" Click="ConfigureProfile_Click" />
+                        <Button Grid.Column="3" Content="Delete" Command="{x:Bind ViewModel.DeleteSelectedProfileCommand}" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                            x:Name="ProfileComboBox"
+                            ItemsSource="{x:Bind ViewModel.Profiles}"
+                            DisplayMemberPath="Name"
+                            SelectedItem="{x:Bind ViewModel.SelectedProfile, Mode=TwoWay}"
+                            PlaceholderText="프로필을 선택하세요" />
+                        <Button Grid.Column="1" Content="Canvas Calibration" Click="CalibrateCanvas_Click" />
+                        <Button Grid.Column="2" Content="Adapter Calibration" Click="CalibrateAdapter_Click" />
+                        <Button Grid.Column="3" Content="이미지 선택" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.SelectImageCommand}" />
+                    </Grid>
+
+                    <Grid Grid.Row="2" ColumnSpacing="18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="7">
+                            <TextBlock Text="DRAWING MODE" Style="{StaticResource EyebrowTextStyle}" />
+                            <ComboBox ItemsSource="{x:Bind ViewModel.DrawingModes}" SelectedItem="{x:Bind ViewModel.SelectedDrawingMode, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="7">
+                            <TextBlock Text="COLOR ADAPTER" Style="{StaticResource EyebrowTextStyle}" />
+                            <ComboBox x:Name="ColorAdapterComboBox" ItemsSource="{x:Bind ViewModel.ColorAdapterKinds}" SelectedItem="{x:Bind ViewModel.SelectedColorAdapterKind, Mode=TwoWay}" SelectionChanged="ColorAdapter_SelectionChanged" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="7">
+                            <TextBlock Text="COLORS" Style="{StaticResource EyebrowTextStyle}" />
+                            <ComboBox ItemsSource="{x:Bind ViewModel.ColorCounts}" SelectedItem="{x:Bind ViewModel.ColorCount, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="3" ColumnSpacing="24">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Precision" />
+                                <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Precision, Mode=OneWay}" HorizontalAlignment="Right" Style="{StaticResource MutedTextStyle}" />
+                            </Grid>
+                            <Slider Minimum="0.2" Maximum="1" StepFrequency="0.05" Value="{x:Bind ViewModel.Precision, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <Grid>
+                                <TextBlock Text="Speed" />
+                                <TextBlock Text="{x:Bind ViewModel.Speed, Mode=OneWay}" HorizontalAlignment="Right" Style="{StaticResource MutedTextStyle}" />
+                            </Grid>
+                            <Slider Minimum="0.2" Maximum="1" StepFrequency="0.05" Value="{x:Bind ViewModel.Speed, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="4" RowSpacing="18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="{x:Bind ViewModel.StatisticsText, Mode=OneWay}" Style="{StaticResource SectionTitleStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.EstimatedTimeText, Mode=OneWay}" Style="{StaticResource MutedTextStyle}" />
+                        <TextBlock Text="{x:Bind ViewModel.DryRunText, Mode=OneWay}" Style="{StaticResource MutedTextStyle}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Button Content="Dry Run" Command="{x:Bind ViewModel.DryRunCommand}" />
+                        <Button Content="Start Drawing" Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.StartDrawingCommand}" />
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="1" Background="{StaticResource AccentSubtleBrush}" CornerRadius="12" Padding="16" Visibility="{x:Bind ViewModel.HasImageVisibility, Mode=OneWay}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind ViewModel.CountdownText, Mode=OneWay}" FontSize="28" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Spacing="5">
+                            <TextBlock Text="{x:Bind ViewModel.ProgressText, Mode=OneWay}" />
+                            <ProgressBar Value="{x:Bind ViewModel.ProgressValue, Mode=OneWay}" Maximum="1" />
+                            <TextBlock Text="현재 색상 {x:Bind ViewModel.CurrentColorText, Mode=OneWay} · F7 Pause/Resume · F8 Emergency Stop" Style="{StaticResource MutedTextStyle}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button Content="Pause / Resume" Command="{x:Bind ViewModel.TogglePauseCommand}" />
+                            <Button Content="Stop" Command="{x:Bind ViewModel.StopDrawingCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <TextBlock Grid.Row="2" Text="F7 Pause / Resume    ·    F8 Emergency Stop    ·    실제 게임 입력 QA는 캘리브레이션 후 진행하세요" HorizontalAlignment="Center" Style="{StaticResource MutedTextStyle}" />
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</Page>

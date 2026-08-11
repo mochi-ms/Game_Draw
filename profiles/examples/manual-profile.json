@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "b8a9e1c4-69f9-4f8c-a8cc-09a6baf8b2a1",
+  "name": "Manual drawing example",
+  "gameName": "Your game",
+  "notes": "Replace canvas bounds with values captured by Canvas Calibration.",
+  "canvas": {
+    "bounds": {
+      "left": 0,
+      "top": 0,
+      "width": 800,
+      "height": 600
+    },
+    "logicalWidth": 100,
+    "logicalHeight": 75
+  },
+  "colorAdapter": {
+    "kind": "manual",
+    "selectAllBeforeTyping": true,
+    "pressEnter": true,
+    "clickDelayMs": 70,
+    "typingDelayMs": 20,
+    "applyDelayMs": 100,
+    "palette": []
+  },
+  "brush": {
+    "strategy": "manual",
+    "logicalPixelPitch": 1,
+    "recommendedSpacing": 6
+  },
+  "delays": {
+    "clickDelayMs": 30,
+    "colorChangeDelayMs": 120,
+    "interStrokeDelayMs": 20
+  },
+  "drawingSpeed": 0.65,
+  "inputSampling": {
+    "movementSpeedPixelsPerSecond": 900,
+    "sampleSpacingPixels": 6,
+    "minimumStrokeDurationMs": 40
+  },
+  "screenMetadata": {
+    "monitorDeviceName": "",
+    "dpi": 96,
+    "rasterizationScale": 1,
+    "notes": "Example only."
+  },
+  "createdAt": "2026-01-01T00:00:00+00:00",
+  "updatedAt": "2026-01-01T00:00:00+00:00"
+}

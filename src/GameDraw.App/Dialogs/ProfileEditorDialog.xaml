@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GameDraw_App.Dialogs.ProfileEditorDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    DefaultButton="Primary"
+    PrimaryButtonText="저장"
+    CloseButtonText="취소"
+    Title="Game Profile">
+    <StackPanel Spacing="14" MinWidth="360">
+        <TextBox x:Name="ProfileNameBox" Header="Profile 이름" PlaceholderText="예: Whiteboard" />
+        <TextBox x:Name="GameNameBox" Header="Game 이름" PlaceholderText="예: My Drawing Game" />
+        <TextBlock Text="좌표와 팔레트는 프로필 안에 저장되며 다른 게임 코드와 분리됩니다." TextWrapping="Wrap" Foreground="#667085" />
+    </StackPanel>
+</ContentDialog>

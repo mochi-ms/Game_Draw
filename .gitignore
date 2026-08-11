@@ -1,0 +1,39 @@
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+
+# Test output and coverage
+TestResults/
+coverage/
+
+# Windows packaging output
+AppPackages/
+AppPackages*/
+BundleArtifacts/
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.cer
+
+# Local user data and secrets
+*.pfx
+*.p12
+secrets.json
+local.settings.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# GameDraw local preview/cache files
+.gamedraw/
