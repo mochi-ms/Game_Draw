@@ -57,7 +57,7 @@ public sealed class CanvasSelectionOverlayWindow : Window
         var instructionPanel = new StackPanel { Spacing = 8 };
         instructionPanel.Children.Add(new TextBlock
         {
-            Text = "Canvas Calibration",
+            Text = "캔버스 위치 설정",
             Foreground = new SolidColorBrush(Colors.White),
             FontSize = 18,
             FontWeight = FontWeights.SemiBold

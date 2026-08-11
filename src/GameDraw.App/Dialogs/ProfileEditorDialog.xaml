@@ -6,10 +6,10 @@
     DefaultButton="Primary"
     PrimaryButtonText="저장"
     CloseButtonText="취소"
-    Title="Game Profile">
+    Title="게임 프로필">
     <StackPanel Spacing="14" MinWidth="360">
-        <TextBox x:Name="ProfileNameBox" Header="Profile 이름" PlaceholderText="예: Whiteboard" />
-        <TextBox x:Name="GameNameBox" Header="Game 이름" PlaceholderText="예: My Drawing Game" />
+        <TextBox x:Name="ProfileNameBox" Header="프로필 이름" PlaceholderText="예: 내 그림판" />
+        <TextBox x:Name="GameNameBox" Header="게임 이름" PlaceholderText="예: 그림 그리기 게임" />
         <TextBlock Text="좌표와 팔레트는 프로필 안에 저장되며 다른 게임 코드와 분리됩니다." TextWrapping="Wrap" Foreground="#667085" />
     </StackPanel>
 </ContentDialog>

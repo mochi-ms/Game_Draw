@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="GameDraw_App.Dialogs.HelpDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    CloseButtonText="닫기"
+    Title="GameDraw 사용 방법">
+    <ScrollViewer MaxHeight="620" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="18" MinWidth="560">
+            <TextBlock Text="처음에는 작은 이미지로 천천히 확인해 보세요." FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="1. 이미지 선택" FontWeight="SemiBold" />
+                <TextBlock Text="PNG, JPG, WEBP, BMP를 지원합니다. 파일을 선택하거나 원본 영역으로 끌어오세요. 단순한 그림으로 첫 테스트를 권장합니다." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="2. 게임 프로필 만들기" FontWeight="SemiBold" />
+                <TextBlock Text="게임마다 그림판 위치와 색상 UI가 다릅니다. 프로필을 한 번 설정하면 다음부터 같은 게임에서 다시 사용할 수 있습니다." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="3. 캔버스 위치 설정" FontWeight="SemiBold" />
+                <TextBlock Text="게임 화면에서 실제로 그림이 그려질 영역을 드래그해 지정합니다. 창을 선택하는 것이 아니라 그림 영역만 선택하세요." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="4. 색상 설정" FontWeight="SemiBold" />
+                <TextBlock Text="HEX 입력은 색상 입력 상자를 한 번 지정하고, 고정 팔레트는 색상 버튼 위치를 등록합니다. 수동 모드는 게임에서 색상을 직접 맞춥니다." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="5. 사전 점검" FontWeight="SemiBold" />
+                <TextBlock Text="실제 클릭 없이 사용할 색상 수, 예상 선 수, 이동 거리와 예상 시간을 확인합니다." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <StackPanel Spacing="5">
+                <TextBlock Text="6. 자동 그리기 시작" FontWeight="SemiBold" />
+                <TextBlock Text="게임 창을 준비한 뒤 시작하세요. 3초 카운트다운 중에 게임으로 포커스를 옮길 수 있습니다." TextWrapping="Wrap" Foreground="#667085" />
+            </StackPanel>
+
+            <Border Background="#FFF7E6" BorderBrush="#F4C66A" BorderThickness="1" CornerRadius="10" Padding="14">
+                <StackPanel Spacing="5">
+                    <TextBlock Text="안전 단축키" FontWeight="SemiBold" />
+                    <TextBlock Text="F7 일시정지 / 다시 시작 · F8 긴급 중지" TextWrapping="Wrap" />
+                    <TextBlock Text="실제 게임에서는 작은 이미지로 시작하고, 캘리브레이션이 맞는지 먼저 확인하세요." TextWrapping="Wrap" Foreground="#667085" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

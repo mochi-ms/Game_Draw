@@ -9,6 +9,7 @@ public sealed record CanvasProfile
     public CanvasRect Bounds { get; init; } = new(0, 0, 800, 600);
     public int LogicalWidth { get; init; } = 64;
     public int LogicalHeight { get; init; } = 48;
+    public bool IsCalibrated { get; init; }
 }
 
 public sealed record PaletteEntry
