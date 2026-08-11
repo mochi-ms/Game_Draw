@@ -396,15 +396,18 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
     private readonly PodiumsColorAdapter _colors = new();
     private readonly PodiumsToolAdapter _tools = new();
     private readonly int? _preferredBrushSizePixels;
+    private readonly bool _selectColors;
 
     public PodiumsExecutionHooks(
         GameProfile profile,
         IGameAdapterExecutionContext context,
-        int? preferredBrushSizePixels = null)
+        int? preferredBrushSizePixels = null,
+        bool selectColors = true)
     {
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _preferredBrushSizePixels = preferredBrushSizePixels;
+        _selectColors = selectColors;
     }
 
     public async ValueTask BeforePlanAsync(
@@ -412,14 +415,17 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        var toolResult = await _tools.SelectToolAsync(
-            PodiumsToolKind.Pencil,
-            _profile,
-            _context,
-            cancellationToken).ConfigureAwait(false);
-        EnsureSucceeded(toolResult);
-
         var layout = PodiumsProfileSettings.ReadControlLayout(_profile);
+        if (layout.HasTool(PodiumsToolKind.Pencil))
+        {
+            var toolResult = await _tools.SelectToolAsync(
+                PodiumsToolKind.Pencil,
+                _profile,
+                _context,
+                cancellationToken).ConfigureAwait(false);
+            EnsureSucceeded(toolResult);
+        }
+
         if (layout.HasBrushSizeControl)
         {
             var sizeResult = await _tools.SelectBrushSizeAsync(
@@ -439,6 +445,11 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         int colorGroupIndex,
         CancellationToken cancellationToken = default)
     {
+        if (!_selectColors)
+        {
+            return;
+        }
+
         var result = await _colors.SelectColorAsync(color, _profile, _context, cancellationToken)
             .ConfigureAwait(false);
         EnsureSucceeded(result);

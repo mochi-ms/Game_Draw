@@ -371,26 +371,13 @@
 
                     <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Spacing="1">
-                                    <TextBlock Text="3  Podiums 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                                    <TextBlock
-                                        Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
-                                        Foreground="{ThemeResource PrimaryBrush}"
-                                        FontWeight="SemiBold" />
-                                </StackPanel>
-                                <Button
-                                    Grid.Column="1"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Click="FullProfileSetup_Click"
-                                    Content="도구·HEX 위치 설정"
-                                    Padding="14,8" />
-                            </Grid>
+                            <StackPanel Spacing="1">
+                                <TextBlock Text="3  Podiums 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
+                                    Foreground="{ThemeResource PrimaryBrush}"
+                                    FontWeight="SemiBold" />
+                            </StackPanel>
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -415,82 +402,21 @@
                             </Grid>
                             <TextBlock
                                 x:Name="CalibrationHint"
-                                Text="자동 채색은 저장된 HEX 입력란을 클릭해 색 값을 직접 바꿉니다. 위치가 바뀌었으면 도구·HEX 위치 설정을 다시 진행하세요."
+                                Text="흰 그림판 영역만 드래그하면 됩니다. 색상이나 HEX 위치는 사용하지 않습니다."
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
-                            <Border
-                                Padding="12"
-                                Background="{ThemeResource PrimarySoftBrush}"
-                                CornerRadius="12"
-                                Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}"
-                                        TextWrapping="Wrap"
-                                        Foreground="{ThemeResource StrongTextBrush}" />
-                                    <Button Grid.Column="1" Click="CancelCalibration_Click" Content="취소" />
-                                </Grid>
-                            </Border>
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Row="0" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
                             <TextBlock Text="2  분석 설정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.35*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox
-                                    Header="표현 방식"
-                                    SelectedItem="{x:Bind ViewModel.SelectedRenderStyle, Mode=TwoWay}"
-                                    HorizontalAlignment="Stretch">
-                                    <x:String>자동 채색</x:String>
-                                    <x:String>검정 선화</x:String>
-                                </ComboBox>
-                                <ComboBox
-                                    Grid.Column="1"
-                                    Header="실행 속도"
-                                    SelectedItem="{x:Bind ViewModel.SelectedSpeed, Mode=TwoWay}"
-                                    HorizontalAlignment="Stretch">
-                                    <x:String>안전하게</x:String>
-                                    <x:String>빠르게</x:String>
-                                    <x:String>매우 빠르게</x:String>
-                                </ComboBox>
-                            </Grid>
-                            <Grid ColumnSpacing="10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.35*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox
-                                    x:Name="SelectedModeComboBox"
-                                    Header="그리는 방법"
-                                    SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}"
-                                    HorizontalAlignment="Stretch">
-                                    <x:String>자동 추천</x:String>
-                                    <x:String>픽셀 점찍기</x:String>
-                                    <x:String>원본 색상 재현</x:String>
-                                    <x:String>세로 스캔라인</x:String>
-                                    <x:String>클린 펜 스트로크</x:String>
-                                    <x:String>윤곽선</x:String>
-                                    <x:String>면 채우기</x:String>
-                                    <x:String>하이브리드</x:String>
-                                </ComboBox>
-                                <NumberBox
-                                    Grid.Column="1"
-                                    Header="최대 색상"
-                                    Minimum="2"
-                                    Maximum="256"
-                                    SmallChange="8"
-                                    SpinButtonPlacementMode="Compact"
-                                    Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
-                            </Grid>
+                            <Border Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,9">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="스마트 고속 선화 · 자동" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
+                                    <TextBlock Text="원본 윤곽 보존 · 연결선 방지 · 최대 안전 속도" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
                             <ToggleSwitch
                                 Header="스마트 피사체"
                                 OffContent="원본 유지"
@@ -498,10 +424,6 @@
                                 IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}"
                                 ToolTipService.ToolTip="로컬 분석으로 배경을 지우고 인물 구도에서는 얼굴 특징부터 그립니다." />
                             <StackPanel x:Name="AnalysisDescriptionPanel" Spacing="2">
-                                <TextBlock
-                                    Text="{x:Bind ViewModel.RenderStyleDescription, Mode=OneWay}"
-                                    TextWrapping="Wrap"
-                                    Style="{ThemeResource MutedTextBlockStyle}" />
                                 <TextBlock
                                     Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}"
                                     TextWrapping="Wrap"
@@ -624,38 +546,12 @@
                                 <TextBlock Text="{x:Bind ViewModel.SelectedImageName, Mode=OneWay}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                 <Button Grid.Column="1" Click="SelectImage_Click" Content="선택" Padding="10,7" />
                             </Grid>
-                            <Grid Grid.Row="2" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox Header="표현 방식" SelectedItem="{x:Bind ViewModel.SelectedRenderStyle, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>자동 채색</x:String>
-                                    <x:String>검정 선화</x:String>
-                                </ComboBox>
-                                <ComboBox Grid.Column="1" Header="실행 속도" SelectedItem="{x:Bind ViewModel.SelectedSpeed, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>안전하게</x:String>
-                                    <x:String>빠르게</x:String>
-                                    <x:String>매우 빠르게</x:String>
-                                </ComboBox>
-                            </Grid>
-                            <Grid Grid.Row="3" ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="1.45*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox Header="그리는 방법" SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>자동 추천</x:String>
-                                    <x:String>클린 펜 스트로크</x:String>
-                                    <x:String>픽셀 점찍기</x:String>
-                                    <x:String>원본 색상 재현</x:String>
-                                    <x:String>세로 스캔라인</x:String>
-                                    <x:String>윤곽선</x:String>
-                                    <x:String>면 채우기</x:String>
-                                    <x:String>하이브리드</x:String>
-                                </ComboBox>
-                                <NumberBox Grid.Column="1" Header="최대 색상" Minimum="2" Maximum="256" SmallChange="8" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" />
-                            </Grid>
+                            <Border Grid.Row="2" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,9">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="스마트 고속 선화 · 자동" FontWeight="SemiBold" />
+                                    <TextBlock Text="원본 윤곽 보존 · 연결선 방지 · 최대 안전 속도" Style="{ThemeResource MutedTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
                             <StackPanel Grid.Row="4" Spacing="4">
                                 <ToggleSwitch
                                     Header="스마트 피사체"
@@ -683,22 +579,8 @@
                                 <x:String>16:9 가로형</x:String>
                                 <x:String>원본 이미지 비율</x:String>
                             </ComboBox>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
-                                <Button Grid.Column="1" Click="FullProfileSetup_Click" Content="도구·HEX 위치 설정" HorizontalAlignment="Stretch" Padding="12,10" />
-                            </Grid>
-                            <TextBlock Text="{x:Bind ViewModel.ColorAutomationStatusLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource PrimaryBrush}" FontWeight="SemiBold" />
-                            <TextBlock Text="영역 드래그는 흰 그림판만 지정합니다. 도구·HEX 설정 마지막 단계에서 사진에 보이는 HEX 입력칸 가운데를 가리키고 F6을 누릅니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
-                            <Border Padding="12" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Visibility="{x:Bind ViewModel.IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}, Mode=OneWay}">
-                                <StackPanel Spacing="8">
-                                    <TextBlock Text="{x:Bind ViewModel.CalibrationMessage, Mode=OneWay}" TextWrapping="Wrap" />
-                                    <Button Click="CancelCalibration_Click" Content="캘리브레이션 취소" HorizontalAlignment="Stretch" />
-                                </StackPanel>
-                            </Border>
+                            <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <TextBlock Text="흰 그림판 영역만 지정하면 됩니다. 색상·HEX·스캔라인 설정은 사용하지 않습니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12">
                                 <TextBlock Text="캔버스를 지정한 뒤 이미지 탭에서 분석하고, 실행 탭에서 시작하세요. 실행 시 GameDraw는 자동으로 숨겨집니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>

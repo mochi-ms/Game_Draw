@@ -91,6 +91,7 @@ public sealed class WindowsExecutionTests
         var firstUp = input.Events.IndexOf("up");
         var nextMove = input.Events.FindIndex(firstUp + 1, item => item.StartsWith("move:", StringComparison.Ordinal));
         Assert.True(firstUp >= 0 && nextMove > firstUp);
+        Assert.True(input.Events.Take(nextMove).Count(item => item == "up") >= 2);
     }
 
     [Fact]

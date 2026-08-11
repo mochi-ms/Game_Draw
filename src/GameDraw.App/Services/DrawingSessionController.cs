@@ -36,11 +36,10 @@ public sealed record PreparedDrawing(
     bool FacePriorityApplied)
 {
     public string Summary =>
-        $"{(RenderStyle == DrawingRenderStyle.LineArt ? "검정 선화" : "자동 채색")} · " +
+        "스마트 고속 선화 · " +
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
         $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}" +
-        (RenderStyle == DrawingRenderStyle.AutoColor ? " · HEX 자동" : string.Empty) +
         (SubjectFocus.BackgroundRemoved ? " · 배경 제거" : string.Empty) +
         (FacePriorityApplied ? " · 얼굴 특징 우선" : string.Empty);
 
@@ -262,11 +261,17 @@ public sealed class DrawingSessionController : IDisposable
         }
 
         var processingSource = subjectFocus.Frame;
+        var requestedBounds = CurrentProfile.Canvas.IsCalibrated
+            ? new PixelSize(CurrentProfile.Canvas.LogicalWidth, CurrentProfile.Canvas.LogicalHeight)
+            : new PixelSize(512, 512);
+        // 416 logical pixels retain facial and silhouette detail while
+        // avoiding thousands of sub-pixel moves that the game cannot display.
+        var analysisBounds = renderStyle == DrawingRenderStyle.LineArt
+            ? new PixelSize(Math.Min(416, requestedBounds.Width), Math.Min(416, requestedBounds.Height))
+            : requestedBounds;
         var target = FitWithin(
             new PixelSize(processingSource.Width, processingSource.Height),
-            CurrentProfile.Canvas.IsCalibrated
-                ? new PixelSize(CurrentProfile.Canvas.LogicalWidth, CurrentProfile.Canvas.LogicalHeight)
-                : new PixelSize(512, 512));
+            analysisBounds);
 
         status?.Report("색상과 해상도를 최적화하는 중입니다…");
         ImageProcessingResult image;
@@ -324,7 +329,7 @@ public sealed class DrawingSessionController : IDisposable
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
             ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
-            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 46 : 37
+            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 38 : 37
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
@@ -406,7 +411,11 @@ public sealed class DrawingSessionController : IDisposable
             prepared.Planning.Plan.Mode == DrawingMode.CleanStroke
             ? PodiumsProfileSettings.ReadControlLayout(CurrentProfile).MinimumBrushSizePixels
             : (int?)null;
-        var hooks = new PodiumsExecutionHooks(CurrentProfile, context, preferredBrushSize);
+        var hooks = new PodiumsExecutionHooks(
+            CurrentProfile,
+            context,
+            preferredBrushSize,
+            selectColors: false);
         lock (_executionLock)
         {
             _activeInput = input;
@@ -425,10 +434,10 @@ public sealed class DrawingSessionController : IDisposable
                         ? 0
                         : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
-                    StrokeStartSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 8 : 6,
-                    PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 4 : 3,
-                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 18 : 14,
-                    MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 20 : 18,
+                    StrokeStartSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 4 : 6,
+                    PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 3 : 3,
+                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 14,
+                    MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 18,
                     Hooks = hooks,
                     RequireForegroundTarget = true
                 },

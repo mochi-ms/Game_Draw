@@ -20,7 +20,7 @@ if (args.Length < 2)
 
 var decoded = await new ImageDecoder().DecodeFileAsync(args[0]);
 var subject = SubjectFocusProcessor.Process(decoded.Frame);
-var target = FitWithin(new PixelSize(subject.Frame.Width, subject.Frame.Height), new PixelSize(512, 512));
+var target = FitWithin(new PixelSize(subject.Frame.Width, subject.Frame.Height), new PixelSize(416, 416));
 var resized = ImageResampler.Resize(subject.Frame, target);
 var lineArt = LineArtProcessor.Extract(resized);
 var palette = new ColorPalette(new[] { RgbColor.Black }, "probe");
@@ -33,7 +33,7 @@ var planning = new DrawingPlanner().Plan(quantized, new DrawingPlannerOptions
 {
     Mode = DrawingMode.CleanStroke,
     MovementPixelsPerSecond = 4_000,
-    PerStrokeSafetyDelayMilliseconds = 46
+    PerStrokeSafetyDelayMilliseconds = 38
 });
 var plan = subject.FacePriorityRegion is { } face
     ? DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, face)

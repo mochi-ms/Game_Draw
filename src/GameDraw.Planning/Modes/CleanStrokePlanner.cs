@@ -13,7 +13,7 @@ namespace GameDraw.Planning.Modes;
 internal static class CleanStrokePlanner
 {
     private const double SimplificationTolerancePixels = 0.9d;
-    private const double MinimumStrokeLengthPixels = 2.25d;
+    private const double MinimumStrokeLengthPixels = 3d;
 
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
     {

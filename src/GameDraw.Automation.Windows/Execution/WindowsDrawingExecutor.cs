@@ -400,7 +400,17 @@ public sealed class WindowsDrawingExecutor :
                     await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
                     if (!cancellationToken.IsCancellationRequested && !StopRequested)
                     {
-                        await DelayUnscaledAsync(options.PenUpSettleMilliseconds, CancellationToken.None).ConfigureAwait(false);
+                        // Repeat the release halfway through the pen-up window.
+                        // Some game frames can miss a single transition while
+                        // processing dense cursor movement; a confirmed release
+                        // prevents the next stroke's positioning move becoming
+                        // a long connector across the canvas.
+                        var confirmationDelay = options.PenUpSettleMilliseconds / 2;
+                        await DelayUnscaledAsync(confirmationDelay, CancellationToken.None).ConfigureAwait(false);
+                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                        await DelayUnscaledAsync(
+                            options.PenUpSettleMilliseconds - confirmationDelay,
+                            CancellationToken.None).ConfigureAwait(false);
                     }
                 }
                 catch
