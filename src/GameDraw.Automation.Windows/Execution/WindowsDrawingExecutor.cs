@@ -259,6 +259,7 @@ public sealed class WindowsDrawingExecutor :
                     await DrawStrokeAsync(
                         stroke,
                         plan.LogicalSize,
+                        plan.Mode,
                         options,
                         extendedTravelFence,
                         token).ConfigureAwait(false);
@@ -366,6 +367,7 @@ public sealed class WindowsDrawingExecutor :
     private async ValueTask DrawStrokeAsync(
         DrawingStroke stroke,
         PixelSize logicalSize,
+        DrawingMode mode,
         DrawingExecutionOptions options,
         bool extendedTravelFence,
         CancellationToken cancellationToken)
@@ -376,6 +378,7 @@ public sealed class WindowsDrawingExecutor :
         }
 
         EnsureForegroundTarget(options);
+        var compactRasterDetail = IsCompactRasterDetail(stroke, mode);
         var first = _binding.Map(stroke.Points[0]);
         // Roblox samples the pen state once per rendered frame. Keep an
         // explicit button-up frame before moving; batching MouseUp and Move in
@@ -427,7 +430,16 @@ public sealed class WindowsDrawingExecutor :
         cancellationToken.ThrowIfCancellationRequested();
         await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
         var penDownStarted = Stopwatch.GetTimestamp();
-        await DelayUnscaledAsync(options.PenDownSettleMilliseconds, cancellationToken).ConfigureAwait(false);
+        // A tiny pupil/highlight can contain several valid plan points while
+        // occupying only a few screen pixels. At maximum speed those points
+        // previously arrived inside one Roblox render frame, so the first dot
+        // appeared but the rest of the feature was silently coalesced. Pace
+        // compact raster details only; large printer passes keep full speed.
+        await DelayUnscaledAsync(
+            compactRasterDetail
+                ? Math.Max(18, options.PenDownSettleMilliseconds)
+                : options.PenDownSettleMilliseconds,
+            cancellationToken).ConfigureAwait(false);
         var buttonDown = true;
         var releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
         var continuousDistance = 0d;
@@ -474,6 +486,14 @@ public sealed class WindowsDrawingExecutor :
                     var prior = new ScreenPoint(
                         (int)Math.Round(screenFrom.X + (deltaX * priorAmount)),
                         (int)Math.Round(screenFrom.Y + (deltaY * priorAmount)));
+                    if (compactRasterDetail)
+                    {
+                        // 12 ms is long enough to prevent a complete compact
+                        // path from collapsing into one native cursor sample,
+                        // without applying frame pacing to the full image.
+                        await DelayUnscaledAsync(12, cancellationToken).ConfigureAwait(false);
+                    }
+
                     await _input.MoveToAsync(target, cancellationToken).ConfigureAwait(false);
                     var stepX = target.X - prior.X;
                     var stepY = target.Y - prior.Y;
@@ -508,7 +528,13 @@ public sealed class WindowsDrawingExecutor :
                     {
                         var elapsedMilliseconds = (Stopwatch.GetTimestamp() - penDownStarted) *
                             1000d / Stopwatch.Frequency;
-                        var remaining = Math.Max(0, options.MinimumPenDownMilliseconds - elapsedMilliseconds);
+                        // A stationary one-point detail must span a complete
+                        // 30 Hz frame as well. Otherwise Windows can report a
+                        // successful down/up pair that Podiums never paints.
+                        var minimumPenDownMilliseconds = compactRasterDetail
+                            ? Math.Max(42, options.MinimumPenDownMilliseconds)
+                            : options.MinimumPenDownMilliseconds;
+                        var remaining = Math.Max(0, minimumPenDownMilliseconds - elapsedMilliseconds);
                         if (remaining > 0d)
                         {
                             await Task.Delay(TimeSpan.FromMilliseconds(remaining), CancellationToken.None)
@@ -554,6 +580,39 @@ public sealed class WindowsDrawingExecutor :
                 }
             }
         }
+    }
+
+    private bool IsCompactRasterDetail(DrawingStroke stroke, DrawingMode mode)
+    {
+        var rasterPrinterMode = mode is
+            DrawingMode.SafeStamp or
+            DrawingMode.HalftoneStamp or
+            DrawingMode.Pixel or
+            DrawingMode.SmartFill;
+        if (!rasterPrinterMode || stroke.ToolAction == DrawingToolAction.Fill || stroke.Points.Count > 96)
+        {
+            return false;
+        }
+
+        var first = _binding.Map(stroke.Points[0]);
+        var minimumX = first.X;
+        var maximumX = first.X;
+        var minimumY = first.Y;
+        var maximumY = first.Y;
+        for (var index = 1; index < stroke.Points.Count; index++)
+        {
+            var point = _binding.Map(stroke.Points[index]);
+            minimumX = Math.Min(minimumX, point.X);
+            maximumX = Math.Max(maximumX, point.X);
+            minimumY = Math.Min(minimumY, point.Y);
+            maximumY = Math.Max(maximumY, point.Y);
+            if (maximumX - minimumX > 28 || maximumY - minimumY > 28)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool RequiresExtendedTravelFence(

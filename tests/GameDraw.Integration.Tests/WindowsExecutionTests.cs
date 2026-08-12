@@ -178,6 +178,49 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
+    public async Task ExecutorKeepsACompactRasterDetailDownAcrossACompleteFrame()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.SafeStamp,
+            new PixelSize(201, 201),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[]
+                    {
+                        new NormalizedPoint(0.50, 0.50),
+                        new NormalizedPoint(0.52, 0.50)
+                    })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            ColorChangeDelayMilliseconds = 0,
+            StrokeStartSettleMilliseconds = 0,
+            PenDownSettleMilliseconds = 0,
+            PenUpSettleMilliseconds = 0,
+            MinimumPenDownMilliseconds = 0,
+            MaximumMoveStepPixels = 64,
+            MaximumContinuousPenDownDistancePixels = 512
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.True(result.Duration >= TimeSpan.FromMilliseconds(35), $"Compact detail completed too quickly: {result.Duration}.");
+        var down = input.Events.IndexOf("down");
+        var detailMove = input.Events.FindIndex(down + 1, item => item.StartsWith("move:", StringComparison.Ordinal));
+        var up = input.Events.FindIndex(detailMove + 1, item => item == "up");
+        Assert.True(down >= 0 && detailMove > down && up > detailMove);
+    }
+
+    [Fact]
     public async Task ExecutorResetsNativeCaptureBeforeEveryFarDisconnectedStroke()
     {
         var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
