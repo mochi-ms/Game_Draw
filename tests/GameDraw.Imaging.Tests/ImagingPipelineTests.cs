@@ -342,4 +342,42 @@ public sealed class ImagingPipelineTests
         Assert.True(result.BackgroundRemoved);
         Assert.Contains(result.Frame.Pixels, pixel => pixel.IsOpaque && pixel.Color == skin);
     }
+
+    [Fact]
+    public void SmartSubjectKeepsSubstantialClothingSeparatedByWhiteShirt()
+    {
+        const int width = 40;
+        const int height = 40;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        var hair = new RgbColor(28, 24, 22);
+        var jacket = new RgbColor(70, 145, 225);
+        for (var y = 4; y <= 20; y++)
+        {
+            for (var x = 12; x <= 27; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(hair);
+            }
+        }
+
+        // Two substantial jacket components separated from the head by a
+        // white shirt/background gap. They are part of the portrait and must
+        // not be discarded as detached background noise.
+        for (var y = 25; y < height; y++)
+        {
+            for (var x = 5; x <= 13; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(jacket);
+            }
+
+            for (var x = 26; x <= 34; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(jacket);
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.True(result.Frame.Pixels.Count(pixel => pixel.IsOpaque && pixel.Color == jacket) >= 200);
+    }
 }

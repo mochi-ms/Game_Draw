@@ -44,8 +44,13 @@ public sealed class WindowsWindowLocator : IWindowLocator
     }
 }
 
-public sealed class WindowsWindowGeometryProvider : IWindowGeometryProvider
+public sealed class WindowsWindowGeometryProvider : IWindowGeometryProvider, IForegroundWindowProbe
 {
+    public bool IsForeground(long handle)
+        => OperatingSystem.IsWindows() &&
+           handle != 0 &&
+           NativeMethods.GetForegroundWindow() == (nint)handle;
+
     public ValueTask<TargetWindowGeometry?> GetGeometryAsync(
         long handle,
         CancellationToken cancellationToken = default)

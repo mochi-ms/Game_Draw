@@ -194,6 +194,7 @@ public sealed class WindowsDrawingExecutor :
         var token = linkedCancellation.Token;
         var totalStrokes = plan.Statistics.StrokeCount;
         var completedStrokes = 0;
+        var lastStrokeProgressReport = started;
         _activeTotal = totalStrokes;
         _activeCompleted = completedStrokes;
 
@@ -265,7 +266,16 @@ public sealed class WindowsDrawingExecutor :
                     firstStrokeAfterColorControl = false;
                     completedStrokes++;
                     Volatile.Write(ref _activeCompleted, completedStrokes);
-                    Report(progress, DrawingExecutionState.Running, completedStrokes, totalStrokes, started, $"스트로크 {completedStrokes}/{totalStrokes} 완료");
+                    // WinUI progress dispatch is substantially more expensive
+                    // than one local stamp. Five updates per second stays
+                    // visually smooth without queueing thousands of UI posts.
+                    var progressNow = Stopwatch.GetTimestamp();
+                    if (completedStrokes == totalStrokes ||
+                        progressNow - lastStrokeProgressReport >= Stopwatch.Frequency / 5)
+                    {
+                        Report(progress, DrawingExecutionState.Running, completedStrokes, totalStrokes, started, $"스트로크 {completedStrokes}/{totalStrokes} 완료");
+                        lastStrokeProgressReport = progressNow;
+                    }
                     await DelayAsync(options.InterStrokeDelayMilliseconds, options.SpeedMultiplier, token).ConfigureAwait(false);
                 }
 
@@ -365,7 +375,7 @@ public sealed class WindowsDrawingExecutor :
             return;
         }
 
-        await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+        EnsureForegroundTarget(options);
         var first = _binding.Map(stroke.Points[0]);
         // Roblox samples the pen state once per rendered frame. Keep an
         // explicit button-up frame before moving; batching MouseUp and Move in
@@ -402,7 +412,7 @@ public sealed class WindowsDrawingExecutor :
                 _binding.Snapshot.Handle,
                 first,
                 cancellationToken).ConfigureAwait(false);
-            await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+            EnsureForegroundTarget(options);
         }
         else
         {
@@ -449,7 +459,7 @@ public sealed class WindowsDrawingExecutor :
                 {
                     await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
-                    await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+                    EnsureForegroundTarget(options);
                     if (releaseEpoch != Volatile.Read(ref _inputReleaseEpoch))
                     {
                         await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
@@ -676,16 +686,9 @@ public sealed class WindowsDrawingExecutor :
         ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
-    private async ValueTask EnsureForegroundTargetAsync(
-        DrawingExecutionOptions options,
-        CancellationToken cancellationToken)
+    private void EnsureForegroundTarget(DrawingExecutionOptions options)
     {
-        if (!await _binding.RefreshAsync(cancellationToken).ConfigureAwait(false))
-        {
-            throw new InvalidOperationException("대상 창이 사라졌거나 클라이언트 좌표를 읽을 수 없습니다.");
-        }
-
-        if (options.RequireForegroundTarget && !_binding.Snapshot.IsForeground)
+        if (options.RequireForegroundTarget && !_binding.IsForegroundNow())
         {
             throw new InvalidOperationException("대상 창이 포그라운드가 아니므로 입력을 즉시 중단했습니다.");
         }

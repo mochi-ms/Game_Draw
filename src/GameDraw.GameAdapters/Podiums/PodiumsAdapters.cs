@@ -81,8 +81,22 @@ public sealed class PodiumsColorAdapter : IColorAdapter
                 new ScreenPoint(calibratedPoint.X, calibratedPoint.Y - (verticalStep * 2)),
                 new ScreenPoint(calibratedPoint.X, calibratedPoint.Y + verticalStep)
             }.Distinct().ToArray();
-            foreach (var hexPoint in candidates)
+            for (var candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++)
             {
+                var hexPoint = candidates[candidateIndex];
+                if (candidateIndex > 0 &&
+                    input is IPointerCaptureResetController { CanRepositionWithCaptureReset: true } retryReset)
+                {
+                    // A fallback coordinate is another disconnected cursor
+                    // trip. Keep it behind the same focus/capture fence as the
+                    // primary canvas-to-HEX move; this path is only paid when
+                    // calibration/readback at the primary point failed.
+                    await retryReset.RepositionWithCaptureResetAsync(
+                        context.Target.Handle,
+                        hexPoint,
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 // Podiums' TextBox needs the same real double-click gesture a
                 // user performs. Keep the two clicks close enough that Roblox
                 // recognizes them as a double click rather than two slow
@@ -302,7 +316,7 @@ public sealed class PodiumsToolAdapter
         try
         {
             var screenPoint = context.Map(point);
-            if (context.Input is IPointerCaptureResetController captureReset)
+            if (context.Input is IPointerCaptureResetController { CanRepositionWithCaptureReset: true } captureReset)
             {
                 // Move to the tool while Roblox is unfocused. If its Lua-side
                 // pencil latch survived the previous stroke, it never observes
@@ -638,7 +652,7 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         }
 
         if (_resetPenLatchBetweenColors &&
-            _context.Input is IPointerCaptureResetController captureReset)
+            _context.Input is IPointerCaptureResetController { CanRepositionWithCaptureReset: true } captureReset)
         {
             if (colorGroupIndex > 0 && _activeTool != PodiumsToolKind.Fill)
             {

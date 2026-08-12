@@ -64,6 +64,8 @@ public interface IInputSafetyController : IInputController
 /// </summary>
 public interface IPointerCaptureResetController : IInputSafetyController
 {
+    bool CanRepositionWithCaptureReset => true;
+
     ValueTask ResetPointerCaptureAsync(
         long targetWindowHandle,
         CancellationToken cancellationToken = default);

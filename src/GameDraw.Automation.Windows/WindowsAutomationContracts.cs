@@ -24,6 +24,16 @@ public interface IWindowGeometryProvider
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Lightweight foreground check used between mouse events. Reading full
+/// window geometry, title, process, and DPI for every path point is both
+/// unnecessary and a major execution bottleneck.
+/// </summary>
+public interface IForegroundWindowProbe
+{
+    bool IsForeground(long handle);
+}
+
 public interface ICursorPositionProvider
 {
     bool TryGetScreenPosition(out ScreenPoint point);

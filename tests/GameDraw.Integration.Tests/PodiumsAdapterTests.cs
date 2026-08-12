@@ -195,6 +195,23 @@ public sealed class PodiumsAdapterTests
     }
 
     [Fact]
+    public async Task ToolAdapterFallsBackToReleasedClickWhenNoFocusSinkExists()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController { CanRepositionWithCaptureReset = false };
+
+        var result = await new PodiumsToolAdapter().SelectToolAsync(
+            PodiumsToolKind.Pencil,
+            profile,
+            CreateContext(input));
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
+        Assert.DoesNotContain("reset-pointer-capture:123", input.Events);
+        Assert.True(input.ReleaseAllButtonsCalls > 0);
+    }
+
+    [Fact]
     public async Task ExecutionHooksKeepCurrentToolAndBrushThenChangeOnlyRequestedColor()
     {
         var profile = CreateConfiguredProfile();
@@ -377,6 +394,8 @@ public sealed class PodiumsAdapterTests
         public bool IgnorePaste { get; init; }
 
         public bool IgnoreTextInput { get; init; }
+
+        public bool CanRepositionWithCaptureReset { get; init; } = true;
 
         public int ReleaseAllButtonsCalls { get; private set; }
 

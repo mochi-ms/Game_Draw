@@ -123,6 +123,8 @@ public sealed class WindowsExecutionTests
         Assert.Equal(DrawingExecutionState.Completed, result.State);
         Assert.True(input.Moves.Count >= 11, $"Expected interpolated movement but received {input.Moves.Count} moves.");
         Assert.Equal(new ScreenPoint(100, 50), input.Moves[^1]);
+        Assert.True(provider.GeometryReads < input.Moves.Count);
+        Assert.True(provider.ForegroundReads >= input.Moves.Count);
     }
 
     [Fact]
@@ -612,15 +614,26 @@ public sealed class WindowsExecutionTests
         }
     }
 
-    private sealed class FakeGeometryProvider(TargetWindowGeometry initial) : IWindowGeometryProvider
+    private sealed class FakeGeometryProvider(TargetWindowGeometry initial) : IWindowGeometryProvider, IForegroundWindowProbe
     {
         public TargetWindowGeometry Current { get; set; } = initial;
+
+        public int GeometryReads { get; private set; }
+
+        public int ForegroundReads { get; private set; }
+
+        public bool IsForeground(long handle)
+        {
+            ForegroundReads++;
+            return Current.Snapshot.Handle == handle && Current.Snapshot.IsForeground;
+        }
 
         public ValueTask<TargetWindowGeometry?> GetGeometryAsync(
             long handle,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            GeometryReads++;
             return ValueTask.FromResult<TargetWindowGeometry?>(Current);
         }
     }

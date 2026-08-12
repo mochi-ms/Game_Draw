@@ -671,12 +671,12 @@ public sealed class DrawingSessionController : IDisposable
                     StrokeStartReleaseConfirmationCount = safeStamp && prepared.SpeedMultiplier >= 8d ? 0 : 1,
                     PenDownSettleMilliseconds = safeStamp ? 3 : 2,
                     PenUpSettleMilliseconds = safeStamp
-                        ? prepared.SpeedMultiplier >= 8d ? 12 : prepared.SpeedMultiplier >= 5d ? 24 : 40
+                        ? prepared.SpeedMultiplier >= 8d ? 30 : prepared.SpeedMultiplier >= 5d ? 34 : 40
                         : 36,
-                    // Maximum speed keeps two stationary up deliveries for
+                    // Maximum speed keeps three stationary up deliveries for
                     // local hops. Long travel and HEX changes still use the
                     // stronger capture/focus and neutralization boundaries.
-                    AdditionalPenUpConfirmationCount = safeStamp && prepared.SpeedMultiplier >= 8d ? 1 : 2,
+                    AdditionalPenUpConfirmationCount = 2,
                     MinimumPenDownMilliseconds = safeStamp
                         ? prepared.SpeedMultiplier >= 8d ? 18 : prepared.SpeedMultiplier >= 5d ? 20 : 24
                         : prepared.SpeedMultiplier >= 8d ? 17 : 18,

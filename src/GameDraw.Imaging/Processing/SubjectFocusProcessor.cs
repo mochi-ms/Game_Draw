@@ -146,17 +146,27 @@ public static class SubjectFocusProcessor
         }
 
         var middle = reds.Count / 2;
+        var median = new RgbColor(reds[middle], greens[middle], blues[middle]);
         var colors = bins.Values
-            .Where(bin => System.Numerics.BitOperations.PopCount((uint)bin.SideMask) >= 2 ||
-                bin.Count >= reds.Count * 0.1d)
+            // A foreground coat, hair, or prop can legitimately touch one
+            // image edge and occupy more than 10% of the border. Requiring the
+            // color on at least two different sides prevents that foreground
+            // color from becoming a flood-fill background seed. The median
+            // border color below still covers a uniform one-sided crop.
+            .Where(bin => System.Numerics.BitOperations.PopCount((uint)bin.SideMask) >= 2)
             .OrderByDescending(bin => bin.Count)
             .Take(10)
             .Select(bin => new RgbColor(
                 (byte)(bin.Red / bin.Count),
                 (byte)(bin.Green / bin.Count),
                 (byte)(bin.Blue / bin.Count)))
+            // Multiple subject edges (for example a jacket touching left,
+            // right, and bottom) are not background merely because they span
+            // several sides. Accept border variants only near the robust
+            // channel median, which represents the dominant background.
+            .Where(color => ColorDistanceSquared(color, median) <= 48d * 48d)
             .ToList();
-        colors.Add(new RgbColor(reds[middle], greens[middle], blues[middle]));
+        colors.Add(median);
         return colors.Distinct().ToArray();
 
         void AddRow(int y, int side)
@@ -337,6 +347,7 @@ public static class SubjectFocusProcessor
         }
 
         var minimumDetailArea = Math.Max(3, (int)Math.Round(primary.Area * 0.00015d));
+        var minimumDetachedSubjectArea = Math.Max(16, (int)Math.Round(primary.Area * 0.01d));
         var keep = new bool[components.Count];
         keep[primaryIndex] = true;
         var maximumDetailDistance = Math.Clamp((int)Math.Round(Math.Min(width, height) * 0.004d), 5, 12);
@@ -376,9 +387,11 @@ public static class SubjectFocusProcessor
         for (var index = 0; index < labels.Length; index++)
         {
             var label = labels[index];
-            if (label >= 0 && components[label].Area >= minimumDetailArea &&
-                (distances[index] <= maximumDetailDistance ||
-                 faceEnvelope.Contains(components[label].Bounds.Center)))
+            if (label >= 0 &&
+                (components[label].Area >= minimumDetachedSubjectArea ||
+                 (components[label].Area >= minimumDetailArea &&
+                   (distances[index] <= maximumDetailDistance ||
+                    faceEnvelope.Contains(components[label].Bounds.Center)))))
             {
                 keep[label] = true;
             }

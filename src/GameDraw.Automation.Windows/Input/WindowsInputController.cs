@@ -49,6 +49,11 @@ public sealed class WindowsInputController : IWindowsInputController, IClipboard
         _focusSinkWindow = (nint)options.FocusSinkWindowHandle;
     }
 
+    public bool CanRepositionWithCaptureReset
+        => OperatingSystem.IsWindows() &&
+           _focusSinkWindow != nint.Zero &&
+           NativeMethods.IsWindow(_focusSinkWindow);
+
     public async ValueTask MoveToAsync(ScreenPoint point, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
