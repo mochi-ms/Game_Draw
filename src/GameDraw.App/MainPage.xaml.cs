@@ -927,11 +927,17 @@ public sealed partial class MainPage : Page, IDisposable
                 _executionWindow.ResetRequested += ExecutionWindow_ResetRequested;
             }
             _executionWindow.Update("Roblox Podiums 창을 자동으로 활성화하는 중입니다.", 0d);
-            _executionWindow.ShowNearTopRight();
-            // The always-on-top status panel may overlap a small part of the
-            // calibrated canvas on compact displays. Let drawing input pass
-            // through it so hovering its reset button cannot turn the cursor
-            // into a hand and leave an unpainted patch. F7/F8 remain active.
+            var protectedRegions = await App.DrawingSession.GetExecutionProtectedRegionsAsync(
+                _executionCancellation.Token);
+            if (protectedRegions.Count == 0)
+            {
+                throw new InvalidOperationException("Roblox Podiums 창의 캔버스 위치를 확인하지 못했습니다. 게임 창을 연 뒤 다시 시작하세요.");
+            }
+
+            _ = _executionWindow.ShowAvoidingProtectedRegions(protectedRegions);
+            // Cross-process click-through is not guaranteed by
+            // WS_EX_TRANSPARENT. The panel therefore avoids the canvas and
+            // every calibrated control; this style is only a secondary guard.
             _executionWindow.SetInputPassThrough(true);
             ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = "Roblox Podiums 창을 자동으로 활성화합니다. F8은 즉시 중지입니다.";

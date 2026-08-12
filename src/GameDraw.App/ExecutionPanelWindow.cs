@@ -1,3 +1,4 @@
+using GameDraw.Core.Geometry;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -125,20 +126,61 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     public long Handle => WindowNative.GetWindowHandle(this).ToInt64();
 
     public void ShowNearTopRight()
+        => _ = ShowAvoidingProtectedRegions(Array.Empty<ScreenRect>());
+
+    public bool ShowAvoidingProtectedRegions(IReadOnlyList<ScreenRect> protectedRegions)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(protectedRegions);
         Activate();
-        var display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        var anchor = protectedRegions.FirstOrDefault(region => region.IsValid);
+        var display = anchor.IsValid
+            ? DisplayArea.GetFromPoint(
+                new PointInt32(anchor.X + (anchor.Width / 2), anchor.Y + (anchor.Height / 2)),
+                DisplayAreaFallback.Primary)
+            : DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+        var foundSafePosition = false;
         if (display is not null)
         {
             var work = display.WorkArea;
-            AppWindow.Move(new PointInt32(work.X + work.Width - PanelWidth - 24, work.Y + 24));
+            var inset = 24;
+            var left = work.X + inset;
+            var right = work.X + work.Width - PanelWidth - inset;
+            var top = work.Y + inset;
+            var bottom = work.Y + work.Height - PanelHeight - inset;
+            var candidates = new[]
+            {
+                new PointInt32(right, top),
+                new PointInt32(right, bottom),
+                new PointInt32(left, top),
+                new PointInt32(left, bottom)
+            };
+
+            foreach (var candidate in candidates.Distinct())
+            {
+                var panel = new ScreenRect(candidate.X, candidate.Y, PanelWidth, PanelHeight);
+                if (protectedRegions.All(region => !Intersects(panel, Inflate(region, 12))))
+                {
+                    AppWindow.Move(candidate);
+                    foundSafePosition = true;
+                    break;
+                }
+            }
+
+            if (!foundSafePosition)
+            {
+                // A visible HWND is required as the focus sink that clears
+                // Roblox's stale pointer capture. Keep it alive and focusable,
+                // but completely outside the work area when no corner is safe.
+                AppWindow.Move(new PointInt32(work.X + work.Width + 8, work.Y + work.Height + 8));
+            }
         }
 
         // Activation and Move can each recreate the WinUI top-level surface.
         // Clip only after both operations, then repeat on the next dispatcher
         // turn so the square backing window never becomes the final shape.
         RefreshRoundedSurfaceAfterShow();
+        return foundSafePosition;
     }
 
     public void Update(string status, double progress)
@@ -339,6 +381,21 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             _ = SetWindowLong32(window, ExtendedStyleIndex, value.ToInt32());
         }
     }
+
+    private static ScreenRect Inflate(ScreenRect value, int amount)
+        => new(
+            value.X - amount,
+            value.Y - amount,
+            value.Width + (amount * 2),
+            value.Height + (amount * 2));
+
+    private static bool Intersects(ScreenRect left, ScreenRect right)
+        => left.IsValid &&
+           right.IsValid &&
+           left.X < right.X + right.Width &&
+           left.X + left.Width > right.X &&
+           left.Y < right.Y + right.Height &&
+           left.Y + left.Height > right.Y;
 
     private const int ExtendedStyleIndex = -20;
     private static readonly nint ExtendedStyleTransparent = new(0x00000020);

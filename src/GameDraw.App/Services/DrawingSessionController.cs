@@ -247,6 +247,66 @@ public sealed class DrawingSessionController : IDisposable
         return _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ScreenRect>> GetExecutionProtectedRegionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!CurrentProfile.Canvas.IsCalibrated)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var target = await FindPodiumsTargetAsync(cancellationToken).ConfigureAwait(false);
+        if (target is null)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var geometry = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false);
+        if (geometry is null || !geometry.IsValid)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var binding = new TargetWindowBinding(geometry, _geometryProvider, CurrentProfile.Canvas.Bounds);
+        var canvasTopLeft = binding.Map(new NormalizedPoint(0d, 0d));
+        var canvasBottomRight = binding.Map(new NormalizedPoint(1d, 1d));
+        var regions = new List<ScreenRect>
+        {
+            new(
+                canvasTopLeft.X,
+                canvasTopLeft.Y,
+                Math.Max(1, canvasBottomRight.X - canvasTopLeft.X + 1),
+                Math.Max(1, canvasBottomRight.Y - canvasTopLeft.Y + 1))
+        };
+
+        var controls = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
+        AddControlRegion(controls.PencilTool);
+        AddControlRegion(controls.EraserTool);
+        if (controls.HasFillTool)
+        {
+            AddControlRegion(controls.FillTool);
+        }
+
+        if (controls.HasColorControls)
+        {
+            AddControlRegion(controls.HexInput, 96, 48);
+        }
+
+        return regions;
+
+        void AddControlRegion(NormalizedPoint point, int width = 56, int height = 56)
+        {
+            if (!point.IsWithinUnitSquare)
+            {
+                return;
+            }
+
+            var screen = binding.MapClient(point);
+            regions.Add(new ScreenRect(screen.X - (width / 2), screen.Y - (height / 2), width, height));
+        }
+    }
+
     public async Task<bool> ActivateTargetAsync(
         TargetWindowSnapshot target,
         CancellationToken cancellationToken = default)
