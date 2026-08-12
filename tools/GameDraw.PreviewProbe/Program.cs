@@ -198,7 +198,11 @@ var podiumsScanPreview = DrawingPlanPostProcessor.RenderPreview(podiumsScanPlan)
 // RC38 AI path: retain the full 256px source budget even when the in-game
 // brush measurement is noisy, use the real one-pixel plan pitch, draw the
 // largest color areas first, then sweep each group like a printer.
-var rc38Source = Letterbox(MakeNearWhiteTransparent(subject.Frame), new PixelSize(256, 256));
+var rc38Source = Letterbox(
+    subject.BackgroundRemoved
+        ? subject.Frame
+        : NearWhiteBackgroundProcessor.RemoveBorderConnected(subject.Frame),
+    new PixelSize(256, 256));
 var rc38Image = new ImageProcessingPipeline().ProcessFrame(rc38Source, new ImageProcessingOptions
 {
     TargetSize = null,
@@ -217,6 +221,7 @@ var rc38Plan = new DrawingPlanner().Plan(rc38Image.Quantized, new DrawingPlanner
 rc38Plan = DrawingPlanPostProcessor.OrderColorsByCoverage(rc38Plan, preserveFirstGroup: true);
 rc38Plan = DrawingPlanPostProcessor.OrderForPrinterTravel(rc38Plan);
 var rc38Preview = DrawingPlanPostProcessor.RenderPreview(rc38Plan);
+var rc38PhysicalPreview = DrawingPlanPostProcessor.RenderPreview(rc38Plan, 2);
 
 Directory.CreateDirectory(args[1]);
 await SaveAsync(resized, Path.Combine(args[1], "01-subject.png"));
@@ -234,7 +239,8 @@ await SaveAsync(smartFillPreview, Path.Combine(args[1], "12-smart-outline-fill.p
 await SaveAsync(fullPalettePreview, Path.Combine(args[1], "13-full-palette-256.png"));
 await SaveAsync(acceleratedPalettePreview, Path.Combine(args[1], "14-ai-fast-palette-128.png"));
 await SaveAsync(podiumsScanPreview, Path.Combine(args[1], "15-podiums-gray-scan.png"));
-await SaveAsync(rc38Preview, Path.Combine(args[1], "16-rc38-ai-smart-paint.png"));
+await SaveAsync(rc38Preview, Path.Combine(args[1], "16-rc39-ai-smart-paint.png"));
+await SaveAsync(rc38PhysicalPreview, Path.Combine(args[1], "17-rc39-physical-brush-preview.png"));
 Console.WriteLine($"source={decoded.Frame.Width}x{decoded.Frame.Height}");
 Console.WriteLine($"subject={subject.Frame.Width}x{subject.Frame.Height} backgroundRemoved={subject.BackgroundRemoved} cropped={subject.Cropped} person={subject.PersonLikely}");
 Console.WriteLine($"working={target.Width}x{target.Height} opaqueEdges={lineArt.Pixels.Count(pixel => pixel.IsOpaque)}");
@@ -289,21 +295,6 @@ static CoreImageFrame Letterbox(CoreImageFrame source, PixelSize canvas)
     }
 
     return new CoreImageFrame(canvas.Width, canvas.Height, pixels);
-}
-
-static CoreImageFrame MakeNearWhiteTransparent(CoreImageFrame source)
-{
-    var pixels = source.Pixels
-        .Select(pixel =>
-        {
-            var minimum = Math.Min(pixel.Color.R, Math.Min(pixel.Color.G, pixel.Color.B));
-            var maximum = Math.Max(pixel.Color.R, Math.Max(pixel.Color.G, pixel.Color.B));
-            return pixel.Alpha == 0 || (minimum >= 232 && maximum - minimum <= 18)
-                ? RgbaPixel.Transparent
-                : pixel;
-        })
-        .ToArray();
-    return new CoreImageFrame(source.Width, source.Height, pixels);
 }
 
 static async Task SaveAsync(CoreImageFrame frame, string path)

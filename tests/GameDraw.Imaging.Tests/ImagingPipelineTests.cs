@@ -16,6 +16,31 @@ namespace GameDraw.Imaging.Tests;
 public sealed class ImagingPipelineTests
 {
     [Fact]
+    public void NearWhiteBackgroundRemovalPreservesEnclosedTeethAndHighlights()
+    {
+        const int width = 7;
+        const int height = 7;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        for (var y = 2; y <= 4; y++)
+        {
+            for (var x = 2; x <= 4; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        // Enclosed white detail representing a tooth/eye highlight.
+        pixels[(3 * width) + 3] = RgbaPixel.Opaque(new RgbColor(250, 248, 246));
+        var result = NearWhiteBackgroundProcessor.RemoveBorderConnected(
+            new CoreImageFrame(width, height, pixels));
+
+        Assert.Equal(0, result[0, 0].Alpha);
+        Assert.Equal(255, result[2, 2].Alpha);
+        Assert.Equal(255, result[3, 3].Alpha);
+        Assert.Equal(new RgbColor(250, 248, 246), result[3, 3].Color);
+    }
+
+    [Fact]
     public void ColorMathUsesPerceptualLabDistance()
     {
         var black = ColorMath.ToLab(RgbColor.Black);

@@ -314,8 +314,12 @@ public sealed class DrawingSessionController : IDisposable
         }
 
         var colorRendering = renderStyle is DrawingRenderStyle.AutoColor or DrawingRenderStyle.SmartPaint or DrawingRenderStyle.FullPalette or DrawingRenderStyle.GrayscalePhoto;
-        var processingSource = colorRendering
-            ? MakeNearWhiteTransparent(subjectFocus.Frame)
+        // SubjectFocus already removes only border-connected background. The
+        // former global near-white filter also erased teeth, eye whites, and
+        // clothing highlights, leaving the later black detail pass with no
+        // light pixels to repaint it in Podiums.
+        var processingSource = colorRendering && !subjectFocus.BackgroundRemoved
+            ? NearWhiteBackgroundProcessor.RemoveBorderConnected(subjectFocus.Frame)
             : subjectFocus.Frame;
         var smartPaintColorLimit = quality switch
         {
@@ -559,7 +563,13 @@ public sealed class DrawingSessionController : IDisposable
         // maps to roughly a two-pixel logical brush on the usual calibrated
         // canvas. Render artist paths at that width so the preview represents
         // the manually selected in-game pencil more faithfully.
-        var previewBrushDiameter = planBrushDiameter;
+        // AI raster paths are executed with Podiums' minimum visible pencil,
+        // which covers more than one logical sample on the usual canvas.
+        // Show that conservative physical footprint so mouth/eye crowding is
+        // visible before F5 instead of promising an unrealistically thin path.
+        var previewBrushDiameter = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? 2
+            : planBrushDiameter;
         var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan, previewBrushDiameter);
         return new PreparedDrawing(
             sourcePath,
@@ -1080,21 +1090,6 @@ public sealed class DrawingSessionController : IDisposable
             (logicalLongSide / Math.Max(0.5d, brush.DiameterPixels)) * samplingAllowance,
             MidpointRounding.AwayFromZero);
         return Math.Min(requestedMaximum, Math.Max(96, brushLimited));
-    }
-
-    private static ImageFrame MakeNearWhiteTransparent(ImageFrame source)
-    {
-        var pixels = source.Pixels
-            .Select(pixel =>
-            {
-                var minimum = Math.Min(pixel.Color.R, Math.Min(pixel.Color.G, pixel.Color.B));
-                var maximum = Math.Max(pixel.Color.R, Math.Max(pixel.Color.G, pixel.Color.B));
-                return pixel.Alpha == 0 || (minimum >= 232 && maximum - minimum <= 18)
-                ? RgbaPixel.Transparent
-                : pixel;
-            })
-            .ToArray();
-        return new ImageFrame(source.Width, source.Height, pixels);
     }
 
     private static ImageFrame ResizeAndLetterbox(ImageFrame source, PixelSize canvasSize)
