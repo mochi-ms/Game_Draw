@@ -195,6 +195,28 @@ var podiumsScanPlan = new DrawingPlanner().Plan(podiumsGrayQuantized, new Drawin
     BrushDiameterPixels = 1
 }).Plan;
 var podiumsScanPreview = DrawingPlanPostProcessor.RenderPreview(podiumsScanPlan);
+// RC38 AI path: retain the full 256px source budget even when the in-game
+// brush measurement is noisy, use the real one-pixel plan pitch, draw the
+// largest color areas first, then sweep each group like a printer.
+var rc38Source = Letterbox(MakeNearWhiteTransparent(subject.Frame), new PixelSize(256, 256));
+var rc38Image = new ImageProcessingPipeline().ProcessFrame(rc38Source, new ImageProcessingOptions
+{
+    TargetSize = null,
+    Palette = new PaletteBuildOptions { MaxColors = 128, MaxSamples = 250_000 },
+    Quantization = new QuantizationOptions { DitherMode = DitherMode.None, PreserveAlpha = true }
+});
+var rc38Plan = new DrawingPlanner().Plan(rc38Image.Quantized, new DrawingPlannerOptions
+{
+    Mode = DrawingMode.SmartFill,
+    MovementPixelsPerSecond = 4_000,
+    PerStrokeSafetyDelayMilliseconds = 38,
+    BrushDiameterPixels = 1,
+    OrderColorGroupsByTravel = false,
+    PriorityRegion = subject.FacePriorityRegion
+}).Plan;
+rc38Plan = DrawingPlanPostProcessor.OrderColorsByCoverage(rc38Plan, preserveFirstGroup: true);
+rc38Plan = DrawingPlanPostProcessor.OrderForPrinterTravel(rc38Plan);
+var rc38Preview = DrawingPlanPostProcessor.RenderPreview(rc38Plan);
 
 Directory.CreateDirectory(args[1]);
 await SaveAsync(resized, Path.Combine(args[1], "01-subject.png"));
@@ -212,6 +234,7 @@ await SaveAsync(smartFillPreview, Path.Combine(args[1], "12-smart-outline-fill.p
 await SaveAsync(fullPalettePreview, Path.Combine(args[1], "13-full-palette-256.png"));
 await SaveAsync(acceleratedPalettePreview, Path.Combine(args[1], "14-ai-fast-palette-128.png"));
 await SaveAsync(podiumsScanPreview, Path.Combine(args[1], "15-podiums-gray-scan.png"));
+await SaveAsync(rc38Preview, Path.Combine(args[1], "16-rc38-ai-smart-paint.png"));
 Console.WriteLine($"source={decoded.Frame.Width}x{decoded.Frame.Height}");
 Console.WriteLine($"subject={subject.Frame.Width}x{subject.Frame.Height} backgroundRemoved={subject.BackgroundRemoved} cropped={subject.Cropped} person={subject.PersonLikely}");
 Console.WriteLine($"working={target.Width}x{target.Height} opaqueEdges={lineArt.Pixels.Count(pixel => pixel.IsOpaque)}");
@@ -227,6 +250,7 @@ Console.WriteLine($"fullPaletteColors={fullPalettePlan.ColorGroups.Select(group 
 Console.WriteLine($"acceleratedPaletteColors={acceleratedPalettePlan.ColorGroups.Select(group => group.Color).Distinct().Count()} acceleratedPaletteStrokes={acceleratedPalettePlan.Statistics.StrokeCount} acceleratedPalettePoints={acceleratedPalettePlan.Statistics.PointCount}");
 Console.WriteLine($"podiumsGraySafeStrokes={podiumsSafePlan.Statistics.StrokeCount} points={podiumsSafePlan.Statistics.PointCount}");
 Console.WriteLine($"podiumsGrayScanStrokes={podiumsScanPlan.Statistics.StrokeCount} points={podiumsScanPlan.Statistics.PointCount}");
+Console.WriteLine($"rc38SmartPaint={rc38Plan.LogicalSize.Width}x{rc38Plan.LogicalSize.Height} colors={rc38Plan.ColorGroups.Select(group => group.Color).Distinct().Count()} strokes={rc38Plan.Statistics.StrokeCount} points={rc38Plan.Statistics.PointCount}");
 var sourceInk = lineArt.Pixels.Select(pixel => pixel.IsOpaque).ToArray();
 var previewInk = preview.Pixels.Select(pixel => pixel.Color == RgbColor.Black).ToArray();
 var intersection = sourceInk.Zip(previewInk).Count(pair => pair.First && pair.Second);
@@ -265,6 +289,21 @@ static CoreImageFrame Letterbox(CoreImageFrame source, PixelSize canvas)
     }
 
     return new CoreImageFrame(canvas.Width, canvas.Height, pixels);
+}
+
+static CoreImageFrame MakeNearWhiteTransparent(CoreImageFrame source)
+{
+    var pixels = source.Pixels
+        .Select(pixel =>
+        {
+            var minimum = Math.Min(pixel.Color.R, Math.Min(pixel.Color.G, pixel.Color.B));
+            var maximum = Math.Max(pixel.Color.R, Math.Max(pixel.Color.G, pixel.Color.B));
+            return pixel.Alpha == 0 || (minimum >= 232 && maximum - minimum <= 18)
+                ? RgbaPixel.Transparent
+                : pixel;
+        })
+        .ToArray();
+    return new CoreImageFrame(source.Width, source.Height, pixels);
 }
 
 static async Task SaveAsync(CoreImageFrame frame, string path)

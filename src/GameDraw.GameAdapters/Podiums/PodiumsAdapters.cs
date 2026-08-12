@@ -301,14 +301,25 @@ public sealed class PodiumsToolAdapter
 
         try
         {
-            if (context.Input is IInputSafetyController safety)
+            var screenPoint = context.Map(point);
+            if (context.Input is IPointerCaptureResetController captureReset)
+            {
+                // Move to the tool while Roblox is unfocused. If its Lua-side
+                // pencil latch survived the previous stroke, it never observes
+                // this cross-canvas travel and therefore cannot draw a line.
+                await captureReset.RepositionWithCaptureResetAsync(
+                    context.Target.Handle,
+                    screenPoint,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else if (context.Input is IInputSafetyController safety)
             {
                 await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
                 await safety.ReleaseAllKeysAsync(cancellationToken).ConfigureAwait(false);
                 await Task.Delay(80, cancellationToken).ConfigureAwait(false);
             }
 
-            await context.Input.ClickAsync(context.Map(point), cancellationToken: cancellationToken).ConfigureAwait(false);
+            await context.Input.ClickAsync(screenPoint, cancellationToken: cancellationToken).ConfigureAwait(false);
             await Task.Delay(100, cancellationToken).ConfigureAwait(false);
             return new(true, $"Selected Podiums {tool} tool.");
         }
@@ -629,10 +640,15 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         if (_resetPenLatchBetweenColors &&
             _context.Input is IPointerCaptureResetController captureReset)
         {
-            // Also reset before the first HEX visit. A prior cancelled run can
-            // leave Podiums latched even though this plan has not drawn yet.
-            await captureReset.ResetPointerCaptureAsync(
+            // Critical ordering: travel to HEX while GameDraw owns focus, then
+            // restore Roblox at the stationary field coordinate. Resetting and
+            // restoring first allowed the stale Lua pencil latch to observe the
+            // later canvas-to-HEX movement and draw a line clipped at the canvas
+            // edge.
+            var hexPoint = PodiumsProfileSettings.ReadControlLayout(_profile).HexInput;
+            await captureReset.RepositionWithCaptureResetAsync(
                 _context.Target.Handle,
+                _context.Map(hexPoint),
                 cancellationToken).ConfigureAwait(false);
         }
         else if (colorGroupIndex > 0 && _resetPenLatchBetweenColors)

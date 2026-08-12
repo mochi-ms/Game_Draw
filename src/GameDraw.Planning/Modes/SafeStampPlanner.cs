@@ -16,11 +16,35 @@ internal static class SafeStampPlanner
     private const int MaximumNeighbourDistance = 2;
 
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
+        => Create(image, options, remappedIndices: null);
+
+    /// <summary>
+    /// Builds the same exact safe-stamp paths from an optional spatially
+    /// cleaned palette-index map. The source alpha and palette still come from
+    /// the original quantized image, so cleanup can merge tiny color islands
+    /// without making transparent background drawable.
+    /// </summary>
+    internal static DrawingPlan Create(
+        QuantizedImage image,
+        DrawingPlannerOptions options,
+        IReadOnlyList<byte>? remappedIndices)
     {
         var strokesByColor = new Dictionary<int, List<DrawingStroke>>();
-        foreach (var paletteIndex in PlanningUtilities.GetPaletteIndices(image, options))
+        var paletteIndices = remappedIndices is null
+            ? PlanningUtilities.GetPaletteIndices(image, options)
+            : Enumerable.Range(0, image.Width * image.Height)
+                .Where(index => PlanningUtilities.IsDrawable(
+                    image,
+                    index % image.Width,
+                    index / image.Width,
+                    options))
+                .Select(index => (int)remappedIndices[index])
+                .Distinct()
+                .OrderBy(index => index)
+                .ToArray();
+        foreach (var paletteIndex in paletteIndices)
         {
-            var mask = BuildMask(image, paletteIndex, options);
+            var mask = BuildMask(image, paletteIndex, options, remappedIndices);
             var centres = SelectBrushCentres(
                 mask,
                 image.Width,
@@ -44,15 +68,19 @@ internal static class SafeStampPlanner
     private static bool[] BuildMask(
         QuantizedImage image,
         int paletteIndex,
-        DrawingPlannerOptions options)
+        DrawingPlannerOptions options,
+        IReadOnlyList<byte>? remappedIndices)
     {
         var mask = new bool[checked(image.Width * image.Height)];
         for (var y = 0; y < image.Height; y++)
         {
             for (var x = 0; x < image.Width; x++)
             {
-                mask[(y * image.Width) + x] =
-                    PlanningUtilities.IsSameColor(image, x, y, paletteIndex, options);
+                var index = (y * image.Width) + x;
+                mask[index] = PlanningUtilities.IsDrawable(image, x, y, options) &&
+                    (remappedIndices is null
+                        ? image[x, y] == paletteIndex
+                        : remappedIndices[index] == paletteIndex);
             }
         }
 

@@ -107,6 +107,37 @@ public static class DrawingPlanPostProcessor
         return new DrawingPlan(plan.Mode, plan.LogicalSize, groups);
     }
 
+    /// <summary>
+    /// Draws the colors covering the most source area first. This makes a
+    /// photograph appear coherently sooner and avoids bouncing between small
+    /// accent colors before the dominant tones are established. Stroke order
+    /// inside each group is left untouched for the printer pass.
+    /// </summary>
+    public static DrawingPlan OrderColorsByCoverage(
+        DrawingPlan plan,
+        bool preserveFirstGroup = false)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.ColorGroups.Count <= 1)
+        {
+            return plan;
+        }
+
+        var prefix = preserveFirstGroup ? plan.ColorGroups.Take(1) : Enumerable.Empty<DrawingColorGroup>();
+        var sortable = preserveFirstGroup ? plan.ColorGroups.Skip(1) : plan.ColorGroups;
+        var ordered = sortable
+            .Select((group, index) => new
+            {
+                Group = group,
+                Index = index,
+                Coverage = group.Strokes.Sum(stroke => StrokeCoverage(stroke, plan.LogicalSize))
+            })
+            .OrderByDescending(item => item.Coverage)
+            .ThenBy(item => item.Index)
+            .Select(item => item.Group);
+        return new DrawingPlan(plan.Mode, plan.LogicalSize, prefix.Concat(ordered));
+    }
+
     public static ImageFrame RenderPreview(DrawingPlan plan, int brushDiameterPixels = 1)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -259,6 +290,24 @@ public static class DrawingPlanPostProcessor
         }
 
         return Contains(region, new NormalizedPoint(centerX / stroke.Points.Count, centerY / stroke.Points.Count));
+    }
+
+    private static double StrokeCoverage(DrawingStroke stroke, PixelSize logicalSize)
+    {
+        if (stroke.Points.Count <= 1)
+        {
+            return 1d;
+        }
+
+        var length = 1d;
+        for (var index = 1; index < stroke.Points.Count; index++)
+        {
+            var x = (stroke.Points[index].X - stroke.Points[index - 1].X) * logicalSize.Width;
+            var y = (stroke.Points[index].Y - stroke.Points[index - 1].Y) * logicalSize.Height;
+            length += Math.Sqrt((x * x) + (y * y));
+        }
+
+        return length;
     }
 
     private static int FacialFeatureRank(DrawingStroke stroke, NormalizedRect region)

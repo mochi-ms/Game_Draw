@@ -319,10 +319,10 @@ public sealed class DrawingSessionController : IDisposable
             : subjectFocus.Frame;
         var smartPaintColorLimit = quality switch
         {
-            DrawingQualityPreset.FastDraft => 12,
-            DrawingQualityPreset.Balanced => 24,
-            DrawingQualityPreset.High => 48,
-            _ => 64
+            DrawingQualityPreset.FastDraft => 16,
+            DrawingQualityPreset.Balanced => 32,
+            DrawingQualityPreset.High => 64,
+            _ => 128
         };
         var effectiveMaximumColors = renderStyle == DrawingRenderStyle.FullPalette
             ? FullPaletteColorBudget(maximumColors, speedMultiplier)
@@ -348,11 +348,16 @@ public sealed class DrawingSessionController : IDisposable
                 SafeStampMaximumDimension(quality)),
             _ => qualitySettings.MaximumDimension
         };
-        var maximumAnalysisDimension = BrushAwareMaximumDimension(
-            requestedMaximumDimension,
-            requestedBounds,
-            CurrentProfile.Brush,
-            renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto ? 1.55d : 1.15d);
+        // AI previews were collapsing to ~104px whenever a noisy brush
+        // measurement reported 7px. Keep the source-resolution budget for AI
+        // modes; their printer pitch is handled by the plan brush below.
+        var maximumAnalysisDimension = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? requestedMaximumDimension
+            : BrushAwareMaximumDimension(
+                requestedMaximumDimension,
+                requestedBounds,
+                CurrentProfile.Brush,
+                1.15d);
         var analysisBounds = FitWithin(
             requestedBounds,
             new PixelSize(maximumAnalysisDimension, maximumAnalysisDimension));
@@ -477,11 +482,17 @@ public sealed class DrawingSessionController : IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
         status?.Report("그리기 경로와 예상 시간을 계산하는 중입니다…");
-        var planBrushDiameter = EffectivePlanBrushDiameter(
-            CurrentProfile.Brush,
-            image.Quantized.Width,
-            image.Quantized.Height,
-            requestedBounds);
+        // At a 256px AI plan on the current Podiums canvas, one plan pixel is
+        // already approximately the visible 3px pencil pitch. Inflating the
+        // virtual brush from a stale 7px measurement blurred both the preview
+        // and the actual result a second time.
+        var planBrushDiameter = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? 1
+            : EffectivePlanBrushDiameter(
+                CurrentProfile.Brush,
+                image.Quantized.Width,
+                image.Quantized.Height,
+                requestedBounds);
         var plannerOptions = new DrawingPlannerOptions
         {
             Mode = (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt or DrawingRenderStyle.ArtistLineArt) && mode == DrawingMode.Auto
@@ -492,7 +503,7 @@ public sealed class DrawingSessionController : IDisposable
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
             ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
-            PerStrokeSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel
+            PerStrokeSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill
                 ? speedMultiplier >= 8d ? 28 : speedMultiplier >= 5d ? 37 : 60
                 : speedMultiplier >= 8d ? 38 : 37,
             StrokeSimplificationTolerancePixels = qualitySettings.SimplificationTolerance,
@@ -532,7 +543,12 @@ public sealed class DrawingSessionController : IDisposable
         // order.  Make the final executable plan printer-like for every mode:
         // top to bottom with alternating horizontal direction and no extra HEX
         // visits.
-        var printerOrdered = DrawingPlanPostProcessor.OrderForPrinterTravel(planning.Plan);
+        var coverageOrdered = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto or DrawingRenderStyle.FullPalette
+            ? DrawingPlanPostProcessor.OrderColorsByCoverage(
+                planning.Plan,
+                preserveFirstGroup: planning.Plan.Mode == DrawingMode.SmartFill)
+            : planning.Plan;
+        var printerOrdered = DrawingPlanPostProcessor.OrderForPrinterTravel(coverageOrdered);
         planning = planning with
         {
             Plan = printerOrdered,
@@ -597,7 +613,7 @@ public sealed class DrawingSessionController : IDisposable
 
         var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
         var safeStamp = prepared.Planning.Plan.Mode is
-            DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel;
+            DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill;
         var input = new WindowsInputController(new WindowsInputOptions
         {
             FocusSinkWindowHandle = focusSinkWindowHandle,

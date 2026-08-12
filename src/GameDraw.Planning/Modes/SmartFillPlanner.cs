@@ -65,7 +65,17 @@ internal static class SmartFillPlanner
             }
         }
 
-        var colorPlan = SafeStampPlanner.Create(image, options);
+        // Quantization can leave thousands of isolated one-pixel color islands.
+        // They are visually insignificant at Podiums' physical pen pitch but
+        // each island requires a costly and risky up/move/down transition.
+        // Merge only those singletons in one non-cascading pass; multi-pixel
+        // facial, hair, and clothing details remain untouched.
+        var cleanedColorMap = SmoothTinyRegions(
+            image,
+            drawable,
+            maximumRegionPixels: 1,
+            maximumPasses: 1);
+        var colorPlan = SafeStampPlanner.Create(image, options, cleanedColorMap);
         var groups = new List<DrawingColorGroup>();
         if (outlines.Count > 0)
         {
@@ -167,15 +177,15 @@ internal static class SmartFillPlanner
     private static byte[] SmoothTinyRegions(
         QuantizedImage image,
         bool[] drawable,
-        double brushDiameter)
+        int maximumRegionPixels,
+        int maximumPasses)
     {
         var map = image.Indices.ToArray();
-        var minimumRegion = Math.Max(5, (int)Math.Ceiling(brushDiameter * brushDiameter * 2d));
-        for (var pass = 0; pass < 2; pass++)
+        for (var pass = 0; pass < maximumPasses; pass++)
         {
             var components = FindComponents(image.Width, image.Height, map, drawable);
             var changed = false;
-            foreach (var component in components.Where(item => item.Pixels.Count < minimumRegion))
+            foreach (var component in components.Where(item => item.Pixels.Count <= maximumRegionPixels))
             {
                 var neighbors = new Dictionary<byte, int>();
                 foreach (var index in component.Pixels)

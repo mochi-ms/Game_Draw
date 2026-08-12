@@ -216,6 +216,9 @@ public sealed class PodiumsAdapterTests
         Assert.DoesNotContain(new ScreenPoint(170, 110), input.Clicks);
         Assert.DoesNotContain(input.Clicks, point => point.X == 180 && point.Y is >= 120 and <= 180);
         Assert.Contains("reset-pointer-capture:123", input.Events);
+        Assert.Contains("move:120,140", input.Events);
+        Assert.True(input.Events.IndexOf("reset-pointer-capture:123") < input.Events.IndexOf("move:120,140"));
+        Assert.True(input.Events.IndexOf("move:120,140") < input.Events.IndexOf("click:120,140"));
         Assert.Equal("#AABBCC", input.ClipboardText);
     }
 
@@ -245,8 +248,11 @@ public sealed class PodiumsAdapterTests
 
         var transition = input.Events.Skip(firstColorEnd).ToArray();
         Assert.Contains("reset-pointer-capture:123", transition);
+        Assert.Contains("move:120,140", transition);
         Assert.DoesNotContain("mouse-down:Left", transition);
         Assert.True(Array.IndexOf(transition, "reset-pointer-capture:123") <
+                    Array.IndexOf(transition, "move:120,140"));
+        Assert.True(Array.IndexOf(transition, "move:120,140") <
                     Array.FindIndex(transition, item => item.StartsWith("click:", StringComparison.Ordinal)));
     }
 

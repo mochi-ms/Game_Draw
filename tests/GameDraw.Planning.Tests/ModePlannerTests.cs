@@ -305,6 +305,64 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void CoverageOrderingDrawsDominantColorBeforeSmallAccents()
+    {
+        var accent = new DrawingColorGroup(
+            new RgbColor(255, 0, 0),
+            new[] { new DrawingStroke(new[] { new GameDraw.Core.Geometry.NormalizedPoint(0.1, 0.1) }) });
+        var dominant = new DrawingColorGroup(
+            new RgbColor(0, 0, 255),
+            new[]
+            {
+                new DrawingStroke(new[]
+                {
+                    new GameDraw.Core.Geometry.NormalizedPoint(0.1, 0.5),
+                    new GameDraw.Core.Geometry.NormalizedPoint(0.9, 0.5)
+                })
+            });
+        var plan = new DrawingPlan(
+            DrawingMode.SafeStamp,
+            new GameDraw.Core.Geometry.PixelSize(100, 100),
+            new[] { accent, dominant });
+
+        var result = DrawingPlanPostProcessor.OrderColorsByCoverage(plan);
+
+        Assert.Equal(dominant.Color, result.ColorGroups[0].Color);
+        Assert.Equal(accent.Color, result.ColorGroups[1].Color);
+    }
+
+    [Fact]
+    public void CoverageOrderingCanKeepSmartFillUnderdrawingFirst()
+    {
+        var underdrawing = new DrawingColorGroup(
+            RgbColor.Black,
+            new[] { new DrawingStroke(new[] { new GameDraw.Core.Geometry.NormalizedPoint(0.5, 0.5) }) });
+        var smallFill = new DrawingColorGroup(
+            new RgbColor(255, 0, 0),
+            new[] { new DrawingStroke(new[] { new GameDraw.Core.Geometry.NormalizedPoint(0.2, 0.2) }) });
+        var largeFill = new DrawingColorGroup(
+            new RgbColor(0, 0, 255),
+            new[]
+            {
+                new DrawingStroke(new[]
+                {
+                    new GameDraw.Core.Geometry.NormalizedPoint(0.1, 0.7),
+                    new GameDraw.Core.Geometry.NormalizedPoint(0.9, 0.7)
+                })
+            });
+        var plan = new DrawingPlan(
+            DrawingMode.SmartFill,
+            new GameDraw.Core.Geometry.PixelSize(100, 100),
+            new[] { underdrawing, smallFill, largeFill });
+
+        var result = DrawingPlanPostProcessor.OrderColorsByCoverage(plan, preserveFirstGroup: true);
+
+        Assert.Equal(underdrawing.Color, result.ColorGroups[0].Color);
+        Assert.Equal(largeFill.Color, result.ColorGroups[1].Color);
+        Assert.Equal(smallFill.Color, result.ColorGroups[2].Color);
+    }
+
+    [Fact]
     public void ArtistOrderDrawsLargeOuterFormBeforeFacialDetails()
     {
         var outer = new DrawingStroke(new[]
@@ -639,6 +697,43 @@ public sealed class ModePlannerTests
             item.Stroke.ToolAction == DrawingToolAction.Fill);
         Assert.Contains(result.Plan.EnumerateStrokes(), item =>
             item.Stroke.ToolAction == DrawingToolAction.Pencil);
+    }
+
+    [Fact]
+    public void SmartFillMergesOnlyIsolatedColorNoiseAndKeepsRealDetails()
+    {
+        const int width = 10;
+        const int height = 10;
+        var red = new RgbColor(220, 70, 70);
+        var blue = new RgbColor(55, 90, 220);
+        var pixels = Enumerable.Repeat(RgbaPixel.Transparent, width * height).ToArray();
+        for (var y = 1; y <= 8; y++)
+        {
+            for (var x = 1; x <= 8; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(red);
+            }
+        }
+
+        pixels[(2 * width) + 2] = RgbaPixel.Opaque(blue); // isolated noise
+        pixels[(6 * width) + 6] = RgbaPixel.Opaque(blue); // real 2px detail
+        pixels[(6 * width) + 7] = RgbaPixel.Opaque(blue);
+        var image = new PaletteQuantizer().Quantize(
+            new ImageFrame(width, height, pixels),
+            new ColorPalette(new[] { red, blue }),
+            new QuantizationOptions { PreserveAlpha = true });
+
+        var result = new DrawingPlanner().Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.SmartFill,
+            BrushDiameterPixels = 1,
+            OrderStrokesByTravel = false
+        });
+        var preview = DrawingPlanPostProcessor.RenderPreview(result.Plan);
+
+        Assert.Equal(red, preview[2, 2].Color);
+        Assert.Equal(blue, preview[6, 6].Color);
+        Assert.Equal(blue, preview[7, 6].Color);
     }
 
     private static DrawingPlanningResult PlanTransparent(
