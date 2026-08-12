@@ -19,9 +19,10 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     private readonly TextBlock _status;
     private readonly TextBlock _percentage;
     private readonly ProgressBar _progress;
-    private const int PanelWidth = 420;
-    private const int PanelHeight = 190;
+    private const int PanelWidth = 460;
+    private const int PanelHeight = 218;
     private bool _disposed;
+    private bool _inputPassThrough;
 
     public event EventHandler? ResetRequested;
 
@@ -36,8 +37,8 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         {
             Text = "Roblox로 전환하세요.",
             TextWrapping = TextWrapping.Wrap,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxLines = 2,
+            TextTrimming = TextTrimming.None,
+            MaxLines = 3,
             FontSize = 13,
             Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 226, 232, 240))
         };
@@ -72,7 +73,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             Text = "F5 시작  ·  F7 일시 정지/재개  ·  F8 즉시 중지",
             FontSize = 12,
             Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(210, 203, 213, 225)),
-            TextWrapping = TextWrapping.NoWrap
+            TextWrapping = TextWrapping.Wrap
         });
         var reset = new Button
         {
@@ -88,8 +89,9 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             CornerRadius = new CornerRadius(15),
             RequestedTheme = ElementTheme.Dark,
             Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 22, 29, 43)),
-            BorderBrush = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 67, 78, 99)),
-            BorderThickness = new Thickness(1),
+            // DWM owns the single native outline. A second XAML outline here
+            // produced the visibly doubled rounded border in RC43.
+            BorderThickness = new Thickness(0),
             Child = content
         };
         _surface.Loaded += (_, _) => RefreshRoundedSurfaceAfterShow();
@@ -130,7 +132,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         if (display is not null)
         {
             var work = display.WorkArea;
-            AppWindow.Move(new PointInt32(work.X + work.Width - 444, work.Y + 24));
+            AppWindow.Move(new PointInt32(work.X + work.Width - PanelWidth - 24, work.Y + 24));
         }
 
         // Activation and Move can each recreate the WinUI top-level surface.
@@ -152,10 +154,44 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         _percentage.Text = $"{value * 100d:0}%";
     }
 
+    public void SetInputPassThrough(bool enabled)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_inputPassThrough == enabled)
+        {
+            return;
+        }
+
+        var handle = WindowNative.GetWindowHandle(this);
+        var extendedStyle = GetExtendedWindowStyle(handle);
+        var updatedStyle = enabled
+            ? extendedStyle | ExtendedStyleTransparent
+            : extendedStyle & ~ExtendedStyleTransparent;
+        if (updatedStyle != extendedStyle)
+        {
+            SetExtendedWindowStyle(handle, updatedStyle);
+            _ = SetWindowPos(
+                handle,
+                nint.Zero,
+                0,
+                0,
+                0,
+                0,
+                SetWindowPositionFlags.NoMove |
+                SetWindowPositionFlags.NoSize |
+                SetWindowPositionFlags.NoZOrder |
+                SetWindowPositionFlags.NoActivate |
+                SetWindowPositionFlags.FrameChanged);
+        }
+
+        _inputPassThrough = enabled;
+    }
+
     public void Hide()
     {
         if (!_disposed)
         {
+            SetInputPassThrough(false);
             AppWindow.Hide();
         }
     }
@@ -261,8 +297,61 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetWindowRect(nint window, out WindowRect bounds);
 
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong32(nint window, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static extern int SetWindowLong32(nint window, int index, int value);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern nint GetWindowLongPtr64(nint window, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern nint SetWindowLongPtr64(nint window, int index, nint value);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(
+        nint window,
+        nint insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        SetWindowPositionFlags flags);
+
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(nint value);
+
+    private static nint GetExtendedWindowStyle(nint window)
+        => IntPtr.Size == 8
+            ? GetWindowLongPtr64(window, ExtendedStyleIndex)
+            : new nint(GetWindowLong32(window, ExtendedStyleIndex));
+
+    private static void SetExtendedWindowStyle(nint window, nint value)
+    {
+        if (IntPtr.Size == 8)
+        {
+            _ = SetWindowLongPtr64(window, ExtendedStyleIndex, value);
+        }
+        else
+        {
+            _ = SetWindowLong32(window, ExtendedStyleIndex, value.ToInt32());
+        }
+    }
+
+    private const int ExtendedStyleIndex = -20;
+    private static readonly nint ExtendedStyleTransparent = new(0x00000020);
+
+    [Flags]
+    private enum SetWindowPositionFlags : uint
+    {
+        NoSize = 0x0001,
+        NoMove = 0x0002,
+        NoZOrder = 0x0004,
+        NoActivate = 0x0010,
+        FrameChanged = 0x0020
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct WindowRect

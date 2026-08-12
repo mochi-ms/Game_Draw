@@ -928,6 +928,11 @@ public sealed partial class MainPage : Page, IDisposable
             }
             _executionWindow.Update("Roblox Podiums 창을 자동으로 활성화하는 중입니다.", 0d);
             _executionWindow.ShowNearTopRight();
+            // The always-on-top status panel may overlap a small part of the
+            // calibrated canvas on compact displays. Let drawing input pass
+            // through it so hovering its reset button cannot turn the cursor
+            // into a hand and leave an unpainted patch. F7/F8 remain active.
+            _executionWindow.SetInputPassThrough(true);
             ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = "Roblox Podiums 창을 자동으로 활성화합니다. F8은 즉시 중지입니다.";
             App.Window.AppWindow.Hide();
@@ -972,6 +977,10 @@ public sealed partial class MainPage : Page, IDisposable
         }
         finally
         {
+            if (_executionWindow is { IsDisposed: false })
+            {
+                _executionWindow.SetInputPassThrough(false);
+            }
             _executionWindow?.Hide();
             App.Window.Activate();
             ViewModel.IsExecutionPanelOpen = false;
