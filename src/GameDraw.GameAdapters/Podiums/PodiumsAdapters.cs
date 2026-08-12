@@ -640,6 +640,16 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         if (_resetPenLatchBetweenColors &&
             _context.Input is IPointerCaptureResetController captureReset)
         {
+            if (colorGroupIndex > 0 && _activeTool != PodiumsToolKind.Fill)
+            {
+                // Losing foreground focus does not necessarily release a
+                // Roblox Lua-side pointer latch: a window holding capture can
+                // still observe cursor travel. Complete one fresh stationary
+                // down/up gesture at the finished endpoint first. It can only
+                // repaint that endpoint, never create a connector.
+                await ResetStationaryPenLatchAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             // Critical ordering: travel to HEX while GameDraw owns focus, then
             // restore Roblox at the stationary field coordinate. Resetting and
             // restoring first allowed the stale Lua pencil latch to observe the
@@ -707,18 +717,17 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
             await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        // The old 10 ms tap could begin and end between two Roblox render
-        // samples. Hold both phases long enough for 30 Hz canvases to observe
-        // a complete new press/release cycle at the already-finished point.
-        await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+        // Span a complete 30 Hz frame on both sides so the game must observe
+        // this as a new stationary gesture, not a continuation of the stroke.
+        await Task.Delay(34, cancellationToken).ConfigureAwait(false);
         await _context.Input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
-        await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(34, cancellationToken).ConfigureAwait(false);
         await _context.Input.MouseUpAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
-        await Task.Delay(90, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(34, cancellationToken).ConfigureAwait(false);
         if (_context.Input is IInputSafetyController finalSafety)
         {
             await finalSafety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
-            await Task.Delay(36, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(18, cancellationToken).ConfigureAwait(false);
             await finalSafety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
         }
     }

@@ -630,7 +630,7 @@ public sealed class DrawingSessionController : IDisposable
             // Roblox coalesces very dense mouse messages. Frame-paced input
             // preserves curves and prevents skipped pen-up events.
             MaxEventsPerSecond = safeStamp
-                ? prepared.SpeedMultiplier >= 8d ? 720d : prepared.SpeedMultiplier >= 5d ? 360d : 144d
+                ? prepared.SpeedMultiplier >= 8d ? 960d : prepared.SpeedMultiplier >= 5d ? 480d : 192d
                 : prepared.SpeedMultiplier >= 8d ? 480d : 192d
         });
         var executor = new WindowsDrawingExecutor(input, binding);
@@ -662,20 +662,21 @@ public sealed class DrawingSessionController : IDisposable
                         ? 0
                         : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
-                    // Keep a full released render frame before positioning and
-                    // another frame after positioning before the next down.
+                    // Local raster hops use the short guard; any move beyond
+                    // the local threshold is promoted by the executor to the
+                    // full 42ms capture/focus fence below.
                     StrokeStartSettleMilliseconds = safeStamp
-                        ? prepared.SpeedMultiplier >= 8d ? 10 : 14
+                        ? prepared.SpeedMultiplier >= 8d ? 2 : prepared.SpeedMultiplier >= 5d ? 7 : 14
                         : 10,
-                    StrokeStartReleaseConfirmationCount = 1,
+                    StrokeStartReleaseConfirmationCount = safeStamp && prepared.SpeedMultiplier >= 8d ? 0 : 1,
                     PenDownSettleMilliseconds = safeStamp ? 3 : 2,
                     PenUpSettleMilliseconds = safeStamp
-                        ? prepared.SpeedMultiplier >= 8d ? 30 : prepared.SpeedMultiplier >= 5d ? 34 : 40
+                        ? prepared.SpeedMultiplier >= 8d ? 12 : prepared.SpeedMultiplier >= 5d ? 24 : 40
                         : 36,
-                    // Three separate up deliveries spanning more than two
-                    // Roblox render frames. The next cursor move is forbidden
-                    // until all confirmations have completed.
-                    AdditionalPenUpConfirmationCount = 2,
+                    // Maximum speed keeps two stationary up deliveries for
+                    // local hops. Long travel and HEX changes still use the
+                    // stronger capture/focus and neutralization boundaries.
+                    AdditionalPenUpConfirmationCount = safeStamp && prepared.SpeedMultiplier >= 8d ? 1 : 2,
                     MinimumPenDownMilliseconds = safeStamp
                         ? prepared.SpeedMultiplier >= 8d ? 18 : prepared.SpeedMultiplier >= 5d ? 20 : 24
                         : prepared.SpeedMultiplier >= 8d ? 17 : 18,

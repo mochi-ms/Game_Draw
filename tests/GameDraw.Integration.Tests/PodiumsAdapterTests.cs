@@ -249,7 +249,12 @@ public sealed class PodiumsAdapterTests
         var transition = input.Events.Skip(firstColorEnd).ToArray();
         Assert.Contains("reset-pointer-capture:123", transition);
         Assert.Contains("move:120,140", transition);
-        Assert.DoesNotContain("mouse-down:Left", transition);
+        Assert.Contains("mouse-down:Left", transition);
+        Assert.Contains("mouse-up:Left", transition);
+        Assert.True(Array.IndexOf(transition, "mouse-down:Left") <
+                    Array.IndexOf(transition, "mouse-up:Left"));
+        Assert.True(Array.IndexOf(transition, "mouse-up:Left") <
+                    Array.IndexOf(transition, "reset-pointer-capture:123"));
         Assert.True(Array.IndexOf(transition, "reset-pointer-capture:123") <
                     Array.IndexOf(transition, "move:120,140"));
         Assert.True(Array.IndexOf(transition, "move:120,140") <

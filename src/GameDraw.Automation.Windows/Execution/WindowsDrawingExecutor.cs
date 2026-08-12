@@ -373,10 +373,10 @@ public sealed class WindowsDrawingExecutor :
         // new coordinate using its previous-frame pen state.
         var startGuardMilliseconds = extendedTravelFence
             ? Math.Max(42, options.StrokeStartSettleMilliseconds)
-            : Math.Max(10, options.StrokeStartSettleMilliseconds);
+            : options.StrokeStartSettleMilliseconds;
         var startConfirmationCount = extendedTravelFence
             ? Math.Max(2, options.StrokeStartReleaseConfirmationCount)
-            : Math.Max(1, options.StrokeStartReleaseConfirmationCount);
+            : options.StrokeStartReleaseConfirmationCount;
         var startGuardIntervals = startConfirmationCount + 1;
         var startGuardInterval = startGuardMilliseconds / startGuardIntervals;
         var startGuardElapsed = 0;
@@ -409,7 +409,9 @@ public sealed class WindowsDrawingExecutor :
             await _input.MoveWithButtonsReleasedAsync(first, cancellationToken).ConfigureAwait(false);
         }
         await DelayUnscaledAsync(
-            Math.Max(8, options.StrokeStartSettleMilliseconds),
+            extendedTravelFence
+                ? Math.Max(8, options.StrokeStartSettleMilliseconds)
+                : Math.Max(4, options.StrokeStartSettleMilliseconds),
             cancellationToken).ConfigureAwait(false);
         await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
