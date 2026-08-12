@@ -15,6 +15,7 @@ namespace GameDraw_App;
 /// </summary>
 public sealed class ExecutionPanelWindow : Window, IDisposable
 {
+    private readonly Border _surface;
     private readonly TextBlock _status;
     private readonly TextBlock _percentage;
     private readonly ProgressBar _progress;
@@ -27,7 +28,10 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     public ExecutionPanelWindow()
     {
         Title = "GameDraw 실행 상태";
-        ExtendsContentIntoTitleBar = true;
+        // This window has no title bar. Extending content into a hidden title
+        // bar leaves an additional WinUI backing surface which can flash as a
+        // white square around the rounded XAML card.
+        ExtendsContentIntoTitleBar = false;
         _status = new TextBlock
         {
             Text = "Roblox로 전환하세요.",
@@ -78,22 +82,30 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         };
         reset.Click += (_, _) => ResetRequested?.Invoke(this, EventArgs.Empty);
         content.Children.Add(reset);
-        Content = new Border
+        _surface = new Border
         {
             Padding = new Thickness(18, 14, 18, 12),
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = new CornerRadius(15),
             RequestedTheme = ElementTheme.Dark,
             Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 22, 29, 43)),
             BorderBrush = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 67, 78, 99)),
             BorderThickness = new Thickness(1),
             Child = content
         };
+        _surface.Loaded += (_, _) => RefreshRoundedSurfaceAfterShow();
+        _surface.SizeChanged += (_, _) => ReapplyRoundedSurface();
+        Content = _surface;
 
+        AppWindow.SetIcon("Assets/AppIcon.ico");
         AppWindow.Resize(new SizeInt32(PanelWidth, PanelHeight));
         AppWindow.IsShownInSwitchers = false;
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
-            presenter.SetBorderAndTitleBar(false, false);
+            // Retaining the one-pixel non-client border lets DWM own the real
+            // Windows 11 rounded silhouette. A fully borderless HWND is not
+            // eligible for reliable DWM corner rounding and exposed the white
+            // rectangular host behind the rounded XAML Border.
+            presenter.SetBorderAndTitleBar(true, false);
             presenter.IsAlwaysOnTop = true;
             presenter.IsMaximizable = false;
             presenter.IsMinimizable = false;
@@ -101,7 +113,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         }
 
         AppWindow.Changed += AppWindow_Changed;
-        Activated += (_, _) => ReapplyRoundedSurface();
+        Activated += (_, _) => RefreshRoundedSurfaceAfterShow();
 
         Closed += (_, _) => _disposed = true;
     }
@@ -124,8 +136,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         // Activation and Move can each recreate the WinUI top-level surface.
         // Clip only after both operations, then repeat on the next dispatcher
         // turn so the square backing window never becomes the final shape.
-        ReapplyRoundedSurface();
-        _ = DispatcherQueue.TryEnqueue(ReapplyRoundedSurface);
+        RefreshRoundedSurfaceAfterShow();
     }
 
     public void Update(string status, double progress)
@@ -176,32 +187,60 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             return;
         }
 
-        ApplyRoundedCorners();
-        ClipWindowToRoundedRectangle();
+        var roundedByDwm = ApplyRoundedCorners();
+        if (!roundedByDwm)
+        {
+            ClipWindowToRoundedRectangle();
+        }
     }
 
-    private void ApplyRoundedCorners()
+    private async void RefreshRoundedSurfaceAfterShow()
+    {
+        // WinUI can recreate its top-level island after Activate/Move. Apply
+        // once immediately and twice after composition has settled so a stale
+        // rectangular region cannot become the final visible surface.
+        ReapplyRoundedSurface();
+        foreach (var delay in new[] { 60, 220 })
+        {
+            await Task.Delay(delay).ConfigureAwait(true);
+            if (_disposed)
+            {
+                return;
+            }
+
+            ReapplyRoundedSurface();
+        }
+    }
+
+    private bool ApplyRoundedCorners()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
         {
-            return;
+            return false;
         }
 
         var handle = WindowNative.GetWindowHandle(this);
+        var darkMode = 1;
+        _ = DwmSetWindowAttribute(handle, 20, ref darkMode, sizeof(int));
         var preference = 2;
-        _ = DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
-        // Windows 11 can retain a square non-client outline even when the
-        // title bar is hidden. DWMWA_COLOR_NONE removes that outer border.
-        var noBorderColor = unchecked((int)0xFFFFFFFE);
-        _ = DwmSetWindowAttribute(handle, 34, ref noBorderColor, sizeof(int));
+        var cornerResult = DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
+        // COLORREF is BGR. Match the card's #434E63 stroke instead of relying
+        // on the system's light default border, which caused the white square.
+        var borderColor = 0x00634E43;
+        _ = DwmSetWindowAttribute(handle, 34, ref borderColor, sizeof(int));
+        return cornerResult == 0;
     }
 
     private void ClipWindowToRoundedRectangle()
     {
         var handle = WindowNative.GetWindowHandle(this);
-        var size = AppWindow.Size;
-        var width = Math.Max(1, size.Width);
-        var height = Math.Max(1, size.Height);
+        if (!GetWindowRect(handle, out var bounds))
+        {
+            return;
+        }
+
+        var width = Math.Max(1, bounds.Right - bounds.Left);
+        var height = Math.Max(1, bounds.Bottom - bounds.Top);
         var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, 28, 28);
         if (region != nint.Zero && SetWindowRgn(handle, region, true) == 0)
         {
@@ -218,6 +257,19 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(nint window, nint region, bool redraw);
 
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint window, out WindowRect bounds);
+
     [DllImport("gdi32.dll")]
     private static extern bool DeleteObject(nint value);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 }
