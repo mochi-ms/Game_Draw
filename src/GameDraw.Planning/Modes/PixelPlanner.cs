@@ -8,7 +8,8 @@ internal static class PixelPlanner
 {
     public static DrawingPlan Create(
         QuantizedImage image,
-        DrawingPlannerOptions options)
+        DrawingPlannerOptions options,
+        DrawingMode mode = DrawingMode.Pixel)
     {
         var strokesByColor = new Dictionary<int, List<DrawingStroke>>();
         for (var y = 0; y < image.Height; y++)
@@ -28,6 +29,6 @@ internal static class PixelPlanner
             }
         }
 
-        return PlanningUtilities.BuildPlan(image, DrawingMode.Pixel, strokesByColor, options);
+        return PlanningUtilities.BuildPlan(image, mode, strokesByColor, options);
     }
 }

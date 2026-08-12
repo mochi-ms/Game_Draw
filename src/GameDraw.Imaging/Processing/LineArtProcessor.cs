@@ -13,6 +13,13 @@ public sealed record LineArtOptions
 
     public int MinimumComponentPixels { get; init; } = 6;
 
+    /// <summary>
+    /// Percentile of non-zero, non-max-suppressed gradients used as the
+    /// adaptive strong-edge threshold. Lower values retain subtle eyes,
+    /// lips, fingers and fabric seams in photographs.
+    /// </summary>
+    public double AdaptivePercentile { get; init; } = 0.84d;
+
     public void Validate()
     {
         if (!double.IsFinite(EdgeThreshold) || EdgeThreshold is <= 0d or > 1_442d)
@@ -28,6 +35,11 @@ public sealed record LineArtOptions
         if (MinimumComponentPixels < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumComponentPixels));
+        }
+
+        if (!double.IsFinite(AdaptivePercentile) || AdaptivePercentile is < 0.4d or > 0.99d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(AdaptivePercentile));
         }
     }
 }
@@ -100,7 +112,8 @@ public static class LineArtProcessor
 
         var adaptiveThreshold = AdaptiveHighThreshold(
             suppressed,
-            source.PixelCount < 256 ? options.EdgeThreshold * 0.15d : options.EdgeThreshold);
+            source.PixelCount < 256 ? options.EdgeThreshold * 0.15d : options.EdgeThreshold,
+            options.AdaptivePercentile);
         var edges = Hysteresis(suppressed, source.Width, source.Height, adaptiveThreshold, options.WeakEdgeRatio);
         RemoveSmallComponents(
             edges,
@@ -234,7 +247,7 @@ public static class LineArtProcessor
         return edges;
     }
 
-    private static double AdaptiveHighThreshold(double[] magnitude, double minimum)
+    private static double AdaptiveHighThreshold(double[] magnitude, double minimum, double percentile)
     {
         var values = magnitude.Where(value => value > 0d).OrderBy(value => value).ToArray();
         if (values.Length == 0)
@@ -242,8 +255,6 @@ public static class LineArtProcessor
             return minimum;
         }
 
-        var density = values.Length / (double)magnitude.Length;
-        var percentile = density >= 0.16d ? 0.9d : density >= 0.08d ? 0.84d : 0.72d;
         var index = Math.Clamp((int)Math.Round((values.Length - 1) * percentile), 0, values.Length - 1);
         return Math.Max(minimum, values[index]);
     }

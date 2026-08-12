@@ -2,6 +2,12 @@ using GameDraw.Core.Geometry;
 
 namespace GameDraw.Core.Drawing;
 
+public enum DrawingToolAction
+{
+    Pencil = 0,
+    Fill = 1
+}
+
 /// <summary>
 /// A single continuous path in normalized canvas coordinates.
 /// </summary>
@@ -9,7 +15,10 @@ public sealed class DrawingStroke
 {
     private readonly NormalizedPoint[] _points;
 
-    public DrawingStroke(IEnumerable<NormalizedPoint> points, bool isClosed = false)
+    public DrawingStroke(
+        IEnumerable<NormalizedPoint> points,
+        bool isClosed = false,
+        DrawingToolAction toolAction = DrawingToolAction.Pencil)
     {
         ArgumentNullException.ThrowIfNull(points);
 
@@ -24,12 +33,20 @@ public sealed class DrawingStroke
             throw new ArgumentException("All stroke points must be finite and within the unit square.", nameof(points));
         }
 
+        if (!Enum.IsDefined(toolAction))
+        {
+            throw new ArgumentOutOfRangeException(nameof(toolAction));
+        }
+
         IsClosed = isClosed;
+        ToolAction = toolAction;
     }
 
     public IReadOnlyList<NormalizedPoint> Points => _points;
 
     public bool IsClosed { get; }
+
+    public DrawingToolAction ToolAction { get; }
 
     public double TravelDistance
     {

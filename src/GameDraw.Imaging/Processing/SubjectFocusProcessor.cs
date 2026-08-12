@@ -6,7 +6,7 @@ namespace GameDraw.Imaging.Processing;
 
 public sealed record SubjectFocusOptions
 {
-    public double BackgroundTolerance { get; init; } = 52d;
+    public double BackgroundTolerance { get; init; } = 24d;
 
     public double CropMarginRatio { get; init; } = 0.07d;
 

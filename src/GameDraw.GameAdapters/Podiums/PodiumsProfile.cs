@@ -213,7 +213,10 @@ public static class PodiumsProfileSettings
                 DrawingMode.Fill,
                 DrawingMode.Hybrid,
                 DrawingMode.CleanStroke,
-                DrawingMode.ArtistStroke
+                DrawingMode.ArtistStroke,
+                DrawingMode.SafeStamp,
+                DrawingMode.HalftoneStamp,
+                DrawingMode.SmartFill
             }
         };
 

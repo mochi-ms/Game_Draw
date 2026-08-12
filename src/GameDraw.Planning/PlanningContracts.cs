@@ -1,4 +1,5 @@
 using GameDraw.Core.Drawing;
+using GameDraw.Core.Geometry;
 using GameDraw.Core.Models;
 using GameDraw.Imaging.Quantization;
 
@@ -20,6 +21,13 @@ public sealed record DrawingPlannerOptions
 
     public bool CloseContours { get; init; } = true;
 
+    /// <summary>
+    /// Optional subject-detail region. Layered planners keep the largest
+    /// silhouette first, then prioritize closed feature lines here before
+    /// completing the remaining underdrawing.
+    /// </summary>
+    public NormalizedRect? PriorityRegion { get; init; }
+
     public int FillRowStep { get; init; } = 1;
 
     public double MovementPixelsPerSecond { get; init; } = 500d;
@@ -36,6 +44,8 @@ public sealed record DrawingPlannerOptions
 
     public double MinimumStrokeLengthPixels { get; init; } = 3d;
 
+    public int BrushDiameterPixels { get; init; } = 2;
+
     public void Validate()
     {
         if (!Enum.IsDefined(Mode))
@@ -46,6 +56,11 @@ public sealed record DrawingPlannerOptions
         if (FillRowStep <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(FillRowStep));
+        }
+
+        if (PriorityRegion is { } priorityRegion && !priorityRegion.IsWithinUnitSquare)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PriorityRegion));
         }
 
         if (!double.IsFinite(MovementPixelsPerSecond) || MovementPixelsPerSecond <= 0d)
@@ -81,6 +96,11 @@ public sealed record DrawingPlannerOptions
         if (!double.IsFinite(MinimumStrokeLengthPixels) || MinimumStrokeLengthPixels < 0d)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumStrokeLengthPixels));
+        }
+
+        if (BrushDiameterPixels is < 1 or > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(BrushDiameterPixels));
         }
     }
 }

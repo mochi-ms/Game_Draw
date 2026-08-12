@@ -13,5 +13,8 @@ public enum DrawingMode
     Fill = 5,
     Hybrid = 6,
     CleanStroke = 7,
-    ArtistStroke = 8
+    ArtistStroke = 8,
+    SafeStamp = 9,
+    HalftoneStamp = 10,
+    SmartFill = 11
 }

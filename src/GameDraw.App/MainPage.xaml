@@ -51,6 +51,10 @@
                         x:Name="HeaderSubtitle"
                         Text="이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요."
                         Style="{ThemeResource MutedTextBlockStyle}" />
+                    <TextBlock
+                        x:Name="BuildVersionText"
+                        FontSize="11"
+                        Foreground="{ThemeResource PrimaryBrush}" />
                 </StackPanel>
                 <StackPanel
                     Grid.Column="1"
@@ -168,16 +172,14 @@
                         TextTrimming="CharacterEllipsis"
                         ToolTipService.ToolTip="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                         VerticalAlignment="Center" />
-                    <Border
+                    <Button
                         Grid.Column="2"
-                        Background="{ThemeResource CardBackgroundBrush}"
-                        CornerRadius="10"
-                        Padding="12,6">
-                        <TextBlock
-                            Text="{x:Bind ViewModel.StageLabel, Mode=OneWay}"
-                            FontWeight="SemiBold"
-                            Foreground="{ThemeResource PrimaryBrush}" />
-                    </Border>
+                        Click="StartDrawing_Click"
+                        Content="{x:Bind ViewModel.StageLabel, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.CanStart, Mode=OneWay}"
+                        Padding="14,7"
+                        FontWeight="SemiBold"
+                        AutomationProperties.Name="바로 그리기 시작" />
                 </Grid>
             </Border>
 
@@ -211,30 +213,48 @@
                                 TextWrapping="Wrap"
                                 Style="{ThemeResource MutedTextBlockStyle}" />
                         </StackPanel>
-                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="10">
-                            <Border Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,10">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="1  이미지 선택" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="그릴 사진을 불러옵니다" Style="{ThemeResource MutedTextBlockStyle}" />
-                                </StackPanel>
-                            </Border>
-                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="2  이미지 분석" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="색상과 경로를 계산합니다" Style="{ThemeResource MutedTextBlockStyle}" />
-                                </StackPanel>
-                            </Border>
-                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="3  게임 연결" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="처음 한 번만 F6 보정" Style="{ThemeResource MutedTextBlockStyle}" />
-                                </StackPanel>
-                            </Border>
-                            <Border Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12" Padding="12,10">
-                                <StackPanel Spacing="2">
-                                    <TextBlock Text="4  그리기 시작" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
-                                    <TextBlock Text="F5 시작 · F7 일시정지 · F8 중지" Style="{ThemeResource MutedTextBlockStyle}" />
-                                </StackPanel>
+                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="8">
+                            <Button
+                                Click="QuickStep_Click"
+                                Content="1  게임 연결 · 펜 측정"
+                                Tag="먼저 캔버스와 도구·HEX 위치를 저장하고, 빈 영역의 점으로 실제 펜 굵기를 측정합니다."
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Padding="12,9" />
+                            <Button
+                                Click="QuickStep_Click"
+                                Content="2  이미지 선택"
+                                Tag="원본 비율을 유지한 채 PNG·JPG·WEBP·BMP 사진을 불러옵니다."
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Padding="12,9" />
+                            <Button
+                                Click="QuickStep_Click"
+                                Content="3  이미지 분석"
+                                Tag="측정된 펜 지름과 선택한 품질을 기준으로 실제 색상과 안전 실행 경로를 계산합니다."
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Padding="12,9" />
+                            <Button
+                                Click="QuickStep_Click"
+                                Content="4  그리기 시작"
+                                Tag="F5로 시작하고 F7로 일시정지·재개합니다. 문제가 생기면 F8로 즉시 마우스를 놓고 중지합니다."
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Padding="12,9" />
+                            <Border
+                                x:Name="QuickStepDetail"
+                                Background="{ThemeResource PrimarySoftBrush}"
+                                CornerRadius="12"
+                                Padding="12,10">
+                                <Border.RenderTransform>
+                                    <TranslateTransform x:Name="QuickStepDetailTransform" />
+                                </Border.RenderTransform>
+                                <TextBlock
+                                    x:Name="QuickStepDetailText"
+                                    Text="버튼을 누르면 단계별 설명이 여기에 표시됩니다."
+                                    TextWrapping="Wrap"
+                                    Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>
                         </StackPanel>
                         <Border
@@ -360,9 +380,13 @@
                     </Grid>
                 </Border>
 
+                <ScrollViewer
+                    Grid.Column="2"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto"
+                    VerticalScrollMode="Auto">
                 <Grid
                     x:Name="ControlPanel"
-                    Grid.Column="2"
                     RowSpacing="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -370,10 +394,10 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
+                    <Border Grid.Row="0" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
                             <StackPanel Spacing="1">
-                                <TextBlock Text="3  Podiums 연결" Style="{ThemeResource SectionTitleTextBlockStyle}" />
+                            <TextBlock Text="1  Podiums 연결 · 펜 측정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                                 <TextBlock
                                     Text="{x:Bind ViewModel.ProfileStatusLabel, Mode=OneWay}"
                                     Foreground="{ThemeResource PrimaryBrush}"
@@ -385,6 +409,8 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
@@ -411,7 +437,49 @@
                                     Content="도구 · HEX 위치 설정 (F6)"
                                     HorizontalAlignment="Stretch"
                                     Padding="14,8" />
+                                <Button
+                                    Grid.Row="2"
+                                    Grid.ColumnSpan="2"
+                                    Click="HexOnlySetup_Click"
+                                    Content="HEX 입력칸만 다시 설정 (F6)"
+                                    HorizontalAlignment="Stretch"
+                                    Padding="14,8" />
+                                <Button
+                                    Grid.Row="3"
+                                    Grid.ColumnSpan="2"
+                                    Click="HexTest_Click"
+                                    Content="HEX #FF3B82 작동 테스트"
+                                    HorizontalAlignment="Stretch"
+                                    Padding="14,8" />
                             </Grid>
+                            <Button
+                                Click="BrushMeasure_Click"
+                                Content="빈 영역 선택 → 현재 펜 굵기 자동 측정"
+                                HorizontalAlignment="Stretch"
+                                Padding="14,9" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <NumberBox
+                                    Header="게임에 표시된 펜 굵기"
+                                    Value="{x:Bind ViewModel.ManualBrushDiameter, Mode=TwoWay}"
+                                    Minimum="1"
+                                    Maximum="32"
+                                    SmallChange="1"
+                                    SpinButtonPlacementMode="Compact" />
+                                <Button
+                                    Grid.Column="1"
+                                    Click="ManualBrushApply_Click"
+                                    Content="직접 보정 적용"
+                                    VerticalAlignment="Bottom"
+                                    Padding="14,8" />
+                            </Grid>
+                            <TextBlock
+                                Text="{x:Bind ViewModel.BrushStatusLabel, Mode=OneWay}"
+                                TextWrapping="Wrap"
+                                Foreground="{ThemeResource PrimaryBrush}" />
                             <TextBlock
                                 x:Name="CalibrationHint"
                                 Text="영역은 박스로 드래그합니다. 펜 굵기는 게임에서 수동 설정하며 프로그램은 건드리지 않습니다."
@@ -420,7 +488,7 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Grid.Row="0" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
+                    <Border Grid.Row="1" Style="{ThemeResource CardBorderStyle}" Padding="18,15">
                         <StackPanel Spacing="10">
                             <TextBlock Text="2  분석 설정" Style="{ThemeResource SectionTitleTextBlockStyle}" />
                             <Grid ColumnSpacing="10" RowSpacing="8">
@@ -433,25 +501,24 @@
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <ComboBox Header="표현 방식" SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>자동 추천</x:String>
-                                    <x:String>자연스러운 펜선</x:String>
-                                    <x:String>원본 펜선 보존</x:String>
-                                    <x:String>정밀 윤곽선</x:String>
-                                    <x:String>원본 색상</x:String>
-                                    <x:String>픽셀 컬러</x:String>
+                                    <x:String>AI 밑그림·안전 채색</x:String>
+                                    <x:String>AI 흑백 사진</x:String>
+                                    <x:String>원본 팔레트 256색</x:String>
+                                    <x:String>작가식 정밀 선화</x:String>
+                                    <x:String>고품질 망점 사진</x:String>
                                 </ComboBox>
                                 <ComboBox Grid.Column="1" Header="그림 품질" SelectedItem="{x:Bind ViewModel.SelectedQuality, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>빠른 초안</x:String>
-                                    <x:String>균형</x:String>
-                                    <x:String>고품질</x:String>
-                                    <x:String>원본 우선</x:String>
+                                    <x:String>속도 우선</x:String>
+                                    <x:String>추천</x:String>
+                                    <x:String>정밀</x:String>
+                                    <x:String>최고 정밀</x:String>
                                 </ComboBox>
                                 <ComboBox Grid.Row="1" Header="실행 속도" SelectedItem="{x:Bind ViewModel.SelectedSpeed, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>안정</x:String>
-                                    <x:String>빠르게</x:String>
-                                    <x:String>매우 빠르게</x:String>
+                                    <x:String>안전 확인</x:String>
+                                    <x:String>고속 점묘</x:String>
+                                    <x:String>최대 속도</x:String>
                                 </ComboBox>
-                                <NumberBox Grid.Row="1" Grid.Column="1" Header="최대 색상 (색상 모드)" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" Minimum="2" Maximum="64" SpinButtonPlacementMode="Compact" />
+                                <NumberBox Grid.Row="1" Grid.Column="1" Header="최대 색상 (2~256)" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" Minimum="2" Maximum="256" SpinButtonPlacementMode="Compact" />
                             </Grid>
                             <ToggleSwitch
                                 Header="스마트 피사체"
@@ -522,6 +589,7 @@
                         </Grid>
                     </Border>
                 </Grid>
+                </ScrollViewer>
             </Grid>
         </Grid>
 
@@ -595,10 +663,10 @@
                             <Grid Grid.Row="3" ColumnSpacing="8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <ComboBox SelectedItem="{x:Bind ViewModel.SelectedMode, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>자동 추천</x:String><x:String>자연스러운 펜선</x:String><x:String>원본 펜선 보존</x:String><x:String>정밀 윤곽선</x:String><x:String>원본 색상</x:String><x:String>픽셀 컬러</x:String>
+                                    <x:String>AI 밑그림·안전 채색</x:String><x:String>AI 흑백 사진</x:String><x:String>원본 팔레트 256색</x:String><x:String>작가식 정밀 선화</x:String><x:String>고품질 망점 사진</x:String>
                                 </ComboBox>
                                 <ComboBox Grid.Column="1" SelectedItem="{x:Bind ViewModel.SelectedQuality, Mode=TwoWay}" HorizontalAlignment="Stretch">
-                                    <x:String>빠른 초안</x:String><x:String>균형</x:String><x:String>고품질</x:String><x:String>원본 우선</x:String>
+                                    <x:String>속도 우선</x:String><x:String>추천</x:String><x:String>정밀</x:String><x:String>최고 정밀</x:String>
                                 </ComboBox>
                             </Grid>
                             <StackPanel Grid.Row="4" Spacing="4">
@@ -630,7 +698,19 @@
                             </ComboBox>
                             <Button Click="ProfileSetup_Click" Content="캔버스 영역 드래그" HorizontalAlignment="Stretch" Padding="12,10" />
                             <Button Click="ToolSetup_Click" Content="도구 · HEX 위치 설정 (F6)" HorizontalAlignment="Stretch" Padding="12,10" />
-                            <TextBlock Text="색상 모드에서는 HEX 입력란을 클릭한 뒤 Ctrl+A → Delete → 색상 코드 → Enter 순서로 자동 변경합니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
+                            <Button Click="HexOnlySetup_Click" Content="HEX 입력칸만 다시 설정 (F6)" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <Button Click="HexTest_Click" Content="HEX #FF3B82 작동 테스트" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <Button Click="BrushMeasure_Click" Content="빈 영역 선택 → 현재 펜 굵기 자동 측정" HorizontalAlignment="Stretch" Padding="12,10" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <NumberBox Header="게임 펜 굵기" Value="{x:Bind ViewModel.ManualBrushDiameter, Mode=TwoWay}" Minimum="1" Maximum="32" SmallChange="1" SpinButtonPlacementMode="Compact" />
+                                <Button Grid.Column="1" Click="ManualBrushApply_Click" Content="직접 적용" VerticalAlignment="Bottom" Padding="12,8" />
+                            </Grid>
+                            <TextBlock Text="{x:Bind ViewModel.BrushStatusLabel, Mode=OneWay}" TextWrapping="Wrap" Foreground="{ThemeResource PrimaryBrush}" />
+                            <TextBlock Text="색상 모드는 HEX 입력란 더블클릭 → Ctrl+A → 붙여넣기 → Ctrl+C 읽기 검증 → Enter 순서로 확정합니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             <Border Padding="12" Background="{ThemeResource PreviewSurfaceBrush}" CornerRadius="12">
                                 <TextBlock Text="캔버스를 지정한 뒤 이미지 탭에서 분석하고, 실행 탭에서 시작하세요. 실행 시 GameDraw는 자동으로 숨겨집니다." TextWrapping="Wrap" Style="{ThemeResource MutedTextBlockStyle}" />
                             </Border>

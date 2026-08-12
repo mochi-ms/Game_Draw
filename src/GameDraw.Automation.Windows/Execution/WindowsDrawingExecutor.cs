@@ -3,6 +3,7 @@ using GameDraw.Automation.Windows.Targeting;
 using GameDraw.Core.Drawing;
 using GameDraw.Core.Execution;
 using GameDraw.Core.Geometry;
+using GameDraw.Core.Models;
 
 namespace GameDraw.Automation.Windows.Execution;
 
@@ -213,6 +214,7 @@ public sealed class WindowsDrawingExecutor :
             }
 
             GameDraw.Core.Colors.RgbColor? activeColor = null;
+            NormalizedPoint? previousStrokeEnd = null;
             for (var groupIndex = 0; groupIndex < plan.ColorGroups.Count; groupIndex++)
             {
                 var group = plan.ColorGroups[groupIndex];
@@ -222,16 +224,45 @@ public sealed class WindowsDrawingExecutor :
                 var colorChanged = activeColor is null || activeColor.Value != group.Color;
                 if (options.Hooks is not null && colorChanged)
                 {
+                    if (plan.ColorGroups.Count > 1)
+                    {
+                        Report(
+                            progress,
+                            DrawingExecutionState.Running,
+                            completedStrokes,
+                            totalStrokes,
+                            started,
+                            $"색상 {groupIndex + 1}/{plan.ColorGroups.Count} · {group.Color.ToHex()} 적용 중");
+                    }
+
                     await options.Hooks.BeforeColorGroupAsync(group.Color, groupIndex, token).ConfigureAwait(false);
                 }
                 activeColor = group.Color;
+                var firstStrokeAfterColorControl = colorChanged && options.Hooks is not null;
 
                 for (var strokeIndex = 0; strokeIndex < group.Strokes.Count; strokeIndex++)
                 {
                     await _pauseGate.WaitAsync(token).ConfigureAwait(false);
                     token.ThrowIfCancellationRequested();
                     await EnsureTargetAsync(plan, options, token).ConfigureAwait(false);
-                    await DrawStrokeAsync(group.Strokes[strokeIndex], plan.LogicalSize, options, token).ConfigureAwait(false);
+                    if (options.Hooks is not null)
+                    {
+                        await options.Hooks.BeforeStrokeAsync(
+                            group.Strokes[strokeIndex],
+                            completedStrokes,
+                            token).ConfigureAwait(false);
+                    }
+                    var stroke = group.Strokes[strokeIndex];
+                    var extendedTravelFence = firstStrokeAfterColorControl ||
+                        RequiresExtendedTravelFence(previousStrokeEnd, stroke.Points[0], plan.Mode);
+                    await DrawStrokeAsync(
+                        stroke,
+                        plan.LogicalSize,
+                        options,
+                        extendedTravelFence,
+                        token).ConfigureAwait(false);
+                    previousStrokeEnd = stroke.IsClosed ? stroke.Points[0] : stroke.Points[^1];
+                    firstStrokeAfterColorControl = false;
                     completedStrokes++;
                     Volatile.Write(ref _activeCompleted, completedStrokes);
                     Report(progress, DrawingExecutionState.Running, completedStrokes, totalStrokes, started, $"스트로크 {completedStrokes}/{totalStrokes} 완료");
@@ -326,6 +357,7 @@ public sealed class WindowsDrawingExecutor :
         DrawingStroke stroke,
         PixelSize logicalSize,
         DrawingExecutionOptions options,
+        bool extendedTravelFence,
         CancellationToken cancellationToken)
     {
         if (stroke.Points.Count == 0)
@@ -335,8 +367,50 @@ public sealed class WindowsDrawingExecutor :
 
         await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
         var first = _binding.Map(stroke.Points[0]);
-        await _input.MoveToAsync(first, cancellationToken).ConfigureAwait(false);
-        await DelayUnscaledAsync(options.StrokeStartSettleMilliseconds, cancellationToken).ConfigureAwait(false);
+        // Roblox samples the pen state once per rendered frame. Keep an
+        // explicit button-up frame before moving; batching MouseUp and Move in
+        // one SendInput call can still make the game draw a connector to the
+        // new coordinate using its previous-frame pen state.
+        var startGuardMilliseconds = extendedTravelFence
+            ? Math.Max(42, options.StrokeStartSettleMilliseconds)
+            : Math.Max(10, options.StrokeStartSettleMilliseconds);
+        var startConfirmationCount = extendedTravelFence
+            ? Math.Max(2, options.StrokeStartReleaseConfirmationCount)
+            : Math.Max(1, options.StrokeStartReleaseConfirmationCount);
+        var startGuardIntervals = startConfirmationCount + 1;
+        var startGuardInterval = startGuardMilliseconds / startGuardIntervals;
+        var startGuardElapsed = 0;
+        await _input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        for (var confirmation = 0;
+             confirmation < startConfirmationCount;
+             confirmation++)
+        {
+            await DelayUnscaledAsync(startGuardInterval, cancellationToken).ConfigureAwait(false);
+            startGuardElapsed += startGuardInterval;
+            await _input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await DelayUnscaledAsync(
+            startGuardMilliseconds - startGuardElapsed,
+            cancellationToken).ConfigureAwait(false);
+        // Never perform a disconnected positioning move while Roblox may
+        // still own a Lua-side drag capture. Far jumps receive a full native
+        // cancel/focus boundary; every other jump uses an ordered up+move
+        // batch after at least one released render frame.
+        if (extendedTravelFence)
+        {
+            await _input.RepositionWithCaptureResetAsync(
+                _binding.Snapshot.Handle,
+                first,
+                cancellationToken).ConfigureAwait(false);
+            await EnsureForegroundTargetAsync(options, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await _input.MoveWithButtonsReleasedAsync(first, cancellationToken).ConfigureAwait(false);
+        }
+        await DelayUnscaledAsync(
+            Math.Max(8, options.StrokeStartSettleMilliseconds),
+            cancellationToken).ConfigureAwait(false);
         await _pauseGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
@@ -344,6 +418,7 @@ public sealed class WindowsDrawingExecutor :
         await DelayUnscaledAsync(options.PenDownSettleMilliseconds, cancellationToken).ConfigureAwait(false);
         var buttonDown = true;
         var releaseEpoch = Volatile.Read(ref _inputReleaseEpoch);
+        var continuousDistance = 0d;
         try
         {
             var previous = stroke.Points[0];
@@ -380,11 +455,34 @@ public sealed class WindowsDrawingExecutor :
                     }
 
                     var amount = step / (double)steps;
-                    await _input.MoveToAsync(
-                        new ScreenPoint(
-                            (int)Math.Round(screenFrom.X + (deltaX * amount)),
-                            (int)Math.Round(screenFrom.Y + (deltaY * amount))),
-                        cancellationToken).ConfigureAwait(false);
+                    var target = new ScreenPoint(
+                        (int)Math.Round(screenFrom.X + (deltaX * amount)),
+                        (int)Math.Round(screenFrom.Y + (deltaY * amount)));
+                    var priorAmount = (step - 1) / (double)steps;
+                    var prior = new ScreenPoint(
+                        (int)Math.Round(screenFrom.X + (deltaX * priorAmount)),
+                        (int)Math.Round(screenFrom.Y + (deltaY * priorAmount)));
+                    await _input.MoveToAsync(target, cancellationToken).ConfigureAwait(false);
+                    var stepX = target.X - prior.X;
+                    var stepY = target.Y - prior.Y;
+                    continuousDistance += Math.Sqrt((stepX * stepX) + (stepY * stepY));
+                    if (continuousDistance >= options.MaximumContinuousPenDownDistancePixels &&
+                        (step < steps || to != stroke.Points[^1] || stroke.IsClosed))
+                    {
+                        // Break at the current coordinate. Even if Roblox
+                        // samples the release late, there is no repositioning
+                        // movement that could draw an unrelated connector.
+                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                        var breakDelay = Math.Max(9, Math.Min(18, options.PenUpSettleMilliseconds));
+                        await DelayUnscaledAsync(breakDelay, CancellationToken.None).ConfigureAwait(false);
+                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                        await DelayUnscaledAsync(breakDelay, CancellationToken.None).ConfigureAwait(false);
+                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                        await _input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+                        penDownStarted = Stopwatch.GetTimestamp();
+                        await DelayUnscaledAsync(options.PenDownSettleMilliseconds, cancellationToken).ConfigureAwait(false);
+                        continuousDistance = 0d;
+                    }
                 }
             }
         }
@@ -409,21 +507,34 @@ public sealed class WindowsDrawingExecutor :
                     await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
                     if (!cancellationToken.IsCancellationRequested && !StopRequested)
                     {
-                        // Confirm release across two additional samples. Roblox
-                        // may coalesce a mouse-up that lands in the same frame as
-                        // dense movement; three releases spanning the full guard
-                        // window prevent the next positioning move from painting
-                        // a long connector across the canvas.
-                        var firstConfirmationDelay = options.PenUpSettleMilliseconds / 3;
-                        var secondConfirmationDelay = options.PenUpSettleMilliseconds / 3;
-                        await DelayUnscaledAsync(firstConfirmationDelay, CancellationToken.None).ConfigureAwait(false);
-                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
-                        await DelayUnscaledAsync(secondConfirmationDelay, CancellationToken.None).ConfigureAwait(false);
-                        await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
-                        await DelayUnscaledAsync(
-                            options.PenUpSettleMilliseconds - firstConfirmationDelay - secondConfirmationDelay,
-                            CancellationToken.None).ConfigureAwait(false);
+                        // Keep the released cursor stationary for the complete
+                        // guard interval. Optional confirmation events are used
+                        // by long-drag modes; rapid dots need no redundant input
+                        // because there was no movement while the button was down.
+                        if (options.PenUpSettleMilliseconds > 0)
+                        {
+                            var intervalCount = options.AdditionalPenUpConfirmationCount + 1;
+                            var interval = options.PenUpSettleMilliseconds / intervalCount;
+                            var elapsed = 0;
+                            for (var confirmation = 0;
+                                 confirmation < options.AdditionalPenUpConfirmationCount;
+                                 confirmation++)
+                            {
+                                await DelayUnscaledAsync(interval, CancellationToken.None).ConfigureAwait(false);
+                                elapsed += interval;
+                                await _input.MouseUpAsync(InputMouseButton.Left, CancellationToken.None).ConfigureAwait(false);
+                            }
+
+                            await DelayUnscaledAsync(
+                                options.PenUpSettleMilliseconds - elapsed,
+                                CancellationToken.None).ConfigureAwait(false);
+                        }
                     }
+
+                    // This is unconditional and bypasses the rate limiter.
+                    // It also fixes stop/pause recovery when local state was
+                    // cleared but Roblox missed the earlier release event.
+                    await _input.ReleaseAllButtonsAsync(CancellationToken.None).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -431,6 +542,37 @@ public sealed class WindowsDrawingExecutor :
                 }
             }
         }
+    }
+
+    private bool RequiresExtendedTravelFence(
+        NormalizedPoint? previousStrokeEnd,
+        NormalizedPoint nextStrokeStart,
+        DrawingMode mode)
+    {
+        if (previousStrokeEnd is not { } previous)
+        {
+            return false;
+        }
+
+        var from = _binding.Map(previous);
+        var to = _binding.Map(nextStrokeStart);
+        var deltaX = to.X - from.X;
+        var deltaY = to.Y - from.Y;
+        var distanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
+        // Vector/artist strokes are intentionally disconnected. Give every
+        // visible reposition a genuine focus/capture boundary so a missed
+        // Roblox InputEnded can never connect two preview strokes. Raster
+        // printer modes contain many brush-local fragments; they retain the
+        // fast path only inside a tiny 12px neighbourhood.
+        var rasterPrinterMode = mode is
+            DrawingMode.SafeStamp or
+            DrawingMode.HalftoneStamp or
+            DrawingMode.Pixel or
+            DrawingMode.SmartFill or
+            DrawingMode.HorizontalScanline or
+            DrawingMode.VerticalScanline;
+        var threshold = rasterPrinterMode ? 12 : 2;
+        return distanceSquared >= threshold * threshold;
     }
 
     private static async ValueTask DelayForMovementAsync(

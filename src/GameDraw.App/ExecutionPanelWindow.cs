@@ -18,6 +18,8 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     private readonly TextBlock _status;
     private readonly TextBlock _percentage;
     private readonly ProgressBar _progress;
+    private const int PanelWidth = 420;
+    private const int PanelHeight = 190;
     private bool _disposed;
 
     public event EventHandler? ResetRequested;
@@ -87,7 +89,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             Child = content
         };
 
-        AppWindow.Resize(new SizeInt32(420, 190));
+        AppWindow.Resize(new SizeInt32(PanelWidth, PanelHeight));
         AppWindow.IsShownInSwitchers = false;
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -98,13 +100,15 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             presenter.IsResizable = false;
         }
 
-        ApplyRoundedCorners();
-        ClipWindowToRoundedRectangle();
+        AppWindow.Changed += AppWindow_Changed;
+        Activated += (_, _) => ReapplyRoundedSurface();
 
         Closed += (_, _) => _disposed = true;
     }
 
     public bool IsDisposed => _disposed;
+
+    public long Handle => WindowNative.GetWindowHandle(this).ToInt64();
 
     public void ShowNearTopRight()
     {
@@ -116,6 +120,12 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
             var work = display.WorkArea;
             AppWindow.Move(new PointInt32(work.X + work.Width - 444, work.Y + 24));
         }
+
+        // Activation and Move can each recreate the WinUI top-level surface.
+        // Clip only after both operations, then repeat on the next dispatcher
+        // turn so the square backing window never becomes the final shape.
+        ReapplyRoundedSurface();
+        _ = DispatcherQueue.TryEnqueue(ReapplyRoundedSurface);
     }
 
     public void Update(string status, double progress)
@@ -151,6 +161,25 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         GC.SuppressFinalize(this);
     }
 
+    private void AppWindow_Changed(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!_disposed && (args.DidSizeChange || args.DidPositionChange))
+        {
+            ReapplyRoundedSurface();
+        }
+    }
+
+    private void ReapplyRoundedSurface()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        ApplyRoundedCorners();
+        ClipWindowToRoundedRectangle();
+    }
+
     private void ApplyRoundedCorners()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
@@ -159,7 +188,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         }
 
         var handle = WindowNative.GetWindowHandle(this);
-        var preference = 3;
+        var preference = 2;
         _ = DwmSetWindowAttribute(handle, 33, ref preference, sizeof(int));
         // Windows 11 can retain a square non-client outline even when the
         // title bar is hidden. DWMWA_COLOR_NONE removes that outer border.
@@ -170,7 +199,10 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     private void ClipWindowToRoundedRectangle()
     {
         var handle = WindowNative.GetWindowHandle(this);
-        var region = CreateRoundRectRgn(0, 0, 421, 191, 28, 28);
+        var size = AppWindow.Size;
+        var width = Math.Max(1, size.Width);
+        var height = Math.Max(1, size.Height);
+        var region = CreateRoundRectRgn(0, 0, width + 1, height + 1, 28, 28);
         if (region != nint.Zero && SetWindowRgn(handle, region, true) == 0)
         {
             _ = DeleteObject(region);

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z._-]*$')]
-    [string]$Version = '1.0.0-rc.12',
+    [string]$Version = '1.0.0-rc.37',
 
     [ValidateSet('win-x64', 'win-x86', 'win-arm64')]
     [string]$Runtime = 'win-x64',
@@ -44,6 +44,8 @@ try
         -r $Runtime `
         --self-contained true `
         --no-restore `
+        -p:Version=$Version `
+        -p:InformationalVersion=$Version `
         -p:PublishTrimmed=false `
         -p:PublishReadyToRun=false `
         -o $publishDirectory

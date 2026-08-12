@@ -85,6 +85,28 @@ public static class DrawingPlanPostProcessor
             : new DrawingPlan(plan.Mode, plan.LogicalSize, priority.Concat(remainder));
     }
 
+    /// <summary>
+    /// Reorders every color group into a top-to-bottom, alternating horizontal
+    /// sweep. This is the final execution ordering pass after any artistic or
+    /// face-priority pass, so every drawing mode receives the same short-travel
+    /// printer behaviour without increasing the number of HEX changes.
+    /// </summary>
+    public static DrawingPlan OrderForPrinterTravel(DrawingPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.ColorGroups.Count == 0)
+        {
+            return plan;
+        }
+
+        var groups = plan.ColorGroups
+            .Select(group => new DrawingColorGroup(
+                group.Color,
+                StrokeOrdering.Order(group.Strokes)))
+            .ToArray();
+        return new DrawingPlan(plan.Mode, plan.LogicalSize, groups);
+    }
+
     public static ImageFrame RenderPreview(DrawingPlan plan, int brushDiameterPixels = 1)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -100,6 +122,12 @@ public static class DrawingPlanPostProcessor
             foreach (var stroke in group.Strokes)
             {
                 var previous = ToPixel(stroke.Points[0], width, height);
+                if (stroke.ToolAction == DrawingToolAction.Fill)
+                {
+                    FloodPaint(previous.X, previous.Y, group.Color);
+                    continue;
+                }
+
                 Paint(previous.X, previous.Y, group.Color);
                 for (var index = 1; index < stroke.Points.Count; index++)
                 {
@@ -116,6 +144,44 @@ public static class DrawingPlanPostProcessor
         }
 
         return new ImageFrame(width, height, pixels);
+
+        void FloodPaint(int startX, int startY, RgbColor color)
+        {
+            var startIndex = (startY * width) + startX;
+            var target = pixels[startIndex].Color;
+            if (target == color || target == RgbColor.Black)
+            {
+                return;
+            }
+
+            var queue = new Queue<PixelPoint>();
+            pixels[startIndex] = RgbaPixel.Opaque(color);
+            queue.Enqueue(new PixelPoint(startX, startY));
+            while (queue.TryDequeue(out var point))
+            {
+                Visit(point.X - 1, point.Y);
+                Visit(point.X + 1, point.Y);
+                Visit(point.X, point.Y - 1);
+                Visit(point.X, point.Y + 1);
+            }
+
+            void Visit(int x, int y)
+            {
+                if ((uint)x >= (uint)width || (uint)y >= (uint)height)
+                {
+                    return;
+                }
+
+                var index = (y * width) + x;
+                if (pixels[index].Color != target)
+                {
+                    return;
+                }
+
+                pixels[index] = RgbaPixel.Opaque(color);
+                queue.Enqueue(new PixelPoint(x, y));
+            }
+        }
 
         void PaintLine(PixelPoint first, PixelPoint second, RgbColor color)
         {

@@ -26,16 +26,16 @@ public partial class MainPageViewModel : ObservableObject
     public partial string? SelectedImagePath { get; set; }
 
     [ObservableProperty]
-    public partial string SelectedMode { get; set; } = "자연스러운 펜선";
+    public partial string SelectedMode { get; set; } = "작가식 정밀 선화";
 
     [ObservableProperty]
     public partial string SelectedRenderStyle { get; set; } = "자연스러운 펜선";
 
     [ObservableProperty]
-    public partial string SelectedQuality { get; set; } = "균형";
+    public partial string SelectedQuality { get; set; } = "추천";
 
     [ObservableProperty]
-    public partial string SelectedSpeed { get; set; } = "매우 빠르게";
+    public partial string SelectedSpeed { get; set; } = "고속 점묘";
 
     [ObservableProperty]
     public partial string SelectedCanvasAspect { get; set; } = "1:1 정사각형";
@@ -86,6 +86,12 @@ public partial class MainPageViewModel : ObservableObject
     public partial string CalibrationMessage { get; set; } = "Roblox Podiums 창을 찾은 뒤 F6으로 좌표를 기록합니다.";
 
     [ObservableProperty]
+    public partial string BrushStatusLabel { get; set; } = "펜 굵기 미측정 · 자동 측정 또는 숫자 직접 보정을 사용하세요";
+
+    [ObservableProperty]
+    public partial double ManualBrushDiameter { get; set; } = 3d;
+
+    [ObservableProperty]
     public partial string PlanSummary { get; set; } = "이미지를 분석하면 해상도, 색상 수, 예상 시간이 표시됩니다.";
 
     [ObservableProperty]
@@ -109,7 +115,7 @@ public partial class MainPageViewModel : ObservableObject
         Stage is not WorkspaceStage.Running and not WorkspaceStage.Paused;
 
     public bool CanStart => HasImage && IsProfileCalibrated &&
-        (SelectedMode is not "원본 색상" and not "픽셀 컬러" || IsColorToolsCalibrated) &&
+        (SelectedMode is not "원본 색상" and not "픽셀 컬러" and not "AI 밑그림·안전 채색" and not "AI 흑백 사진" and not "스마트 윤곽·채우기" and not "원본 팔레트 256색" || IsColorToolsCalibrated) &&
         !IsBusy && !IsCalibrating &&
         Stage is WorkspaceStage.Ready or WorkspaceStage.Completed or WorkspaceStage.Failed;
 
@@ -121,11 +127,17 @@ public partial class MainPageViewModel : ObservableObject
 
     public string ModeDescription => SelectedMode switch
     {
+        "AI 밑그림·안전 채색" or "스마트 윤곽·채우기" => "피사체 외곽선만 먼저 잡은 뒤 원본 픽셀 컬러를 짧은 안전 점묘로 덮어, 검은 내부 경계 없이 사진 품질로 완성합니다.",
+        "AI 흑백 사진" => "원본 밝기와 명암을 회색 팔레트로 보존하고, 분리된 짧은 안전 점묘로 흑백 사진처럼 완성합니다.",
+        "원본 팔레트 256색" => "최대 256색을 쓰되 최대 속도에서는 가까운 색을 최대 128색으로 AI 통합합니다. 품질은 유지하고 HEX 왕복과 안전 스탬프 수를 줄입니다.",
+        "작가식 정밀 선화" => "얼굴 특징·머리카락 결·옷 주름을 얇은 선으로 살리고, 암부는 연결된 방향성 해칭으로 묘사합니다.",
         "정밀 윤곽선" => "경계 대비를 세밀하게 추적합니다. 로고·도형·이미 선화인 원본에 적합합니다.",
-        "원본 펜선 보존" => "가로 스캔 없이 원본 암부의 중심선을 추적해 큰 외곽선→얼굴→내부선 순서로 그립니다.",
+        "고품질 망점 사진" => "사진의 명암과 눈·코·입·머리카락 경계를 독립된 검정 망점 밀도로 재현합니다.",
+        "원본 펜선 보존" => "얇은 선은 곡선으로 정리하고 눈·속눈썹 같은 굵은 암부는 원래 굵기를 보존합니다.",
+        "1점 안전 점묘" => "한 번 누를 때 정확히 한 점만 찍고, 제자리 MouseUp 확인 뒤에만 다음 점으로 이동합니다.",
         "원본 색상" => "대표 색을 HEX 입력란에 자동 입력하고 같은 색 영역을 빠른 선으로 채웁니다.",
         "픽셀 컬러" => "형태를 픽셀 단위로 보존합니다. 작은 아이콘과 도트 그림에 적합합니다.",
-        "자동 추천" => "사진과 일러스트를 판별해 자연스러운 펜선을 우선 적용합니다.",
+        "자동 추천" => "안전 점묘으로 처리합니다.",
         _ => "암부 중심선을 한 번씩 이어 그려 이중선과 털선을 줄입니다. 인물·애니 캐릭터에 권장합니다."
     };
 
@@ -234,6 +246,11 @@ public partial class MainPageViewModel : ObservableObject
 
     partial void OnSelectedModeChanged(string value)
     {
+        if (value == "원본 팔레트 256색")
+        {
+            MaximumColors = 256d;
+        }
+
         OnPropertyChanged(nameof(ModeDescription));
         OnPropertyChanged(nameof(CanStart));
     }
@@ -320,10 +337,10 @@ public partial class MainPageViewModel : ObservableObject
     {
         SelectedImagePath = null;
         SelectedImageName = "이미지가 선택되지 않았습니다.";
-        SelectedMode = "자연스러운 펜선";
+        SelectedMode = "작가식 정밀 선화";
         SelectedRenderStyle = "자연스러운 펜선";
-        SelectedQuality = "균형";
-        SelectedSpeed = "매우 빠르게";
+        SelectedQuality = "추천";
+        SelectedSpeed = "고속 점묘";
         SmartSubjectEnabled = true;
         MaximumColors = 16d;
         Progress = 0d;

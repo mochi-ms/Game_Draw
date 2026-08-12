@@ -1,5 +1,6 @@
 using GameDraw.Core.Colors;
 using GameDraw.Core.Execution;
+using GameDraw.Core.Geometry;
 using GameDraw.Core.Models;
 using GameDraw.Core.Targeting;
 using GameDraw.Profiles;
@@ -9,9 +10,11 @@ namespace GameDraw.GameAdapters.Podiums;
 
 public sealed class PodiumsColorAdapter : IColorAdapter
 {
-    private static readonly TimeSpan FocusSettleDelay = TimeSpan.FromMilliseconds(45);
-    private static readonly TimeSpan SelectionSettleDelay = TimeSpan.FromMilliseconds(20);
-    private static readonly TimeSpan CommitSettleDelay = TimeSpan.FromMilliseconds(55);
+    private static readonly TimeSpan DoubleClickInterval = TimeSpan.FromMilliseconds(28);
+    private static readonly TimeSpan FocusSettleDelay = TimeSpan.FromMilliseconds(90);
+    private static readonly TimeSpan KeySettleDelay = TimeSpan.FromMilliseconds(14);
+    private static readonly TimeSpan SelectionSettleDelay = TimeSpan.FromMilliseconds(32);
+    private static readonly TimeSpan CommitSettleDelay = TimeSpan.FromMilliseconds(100);
 
     public ColorAdapterKind Kind => ColorAdapterKind.HexInput;
 
@@ -43,26 +46,92 @@ public sealed class PodiumsColorAdapter : IColorAdapter
         var aHeld = false;
         try
         {
-            await input.ClickAsync(context.Map(layout.HexInput), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            await Task.Delay(FocusSettleDelay, cancellationToken).ConfigureAwait(false);
-            await input.KeyDownAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
-            controlHeld = true;
-            await input.KeyDownAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
-            aHeld = true;
-            await input.KeyUpAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
-            aHeld = false;
-            await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
-            controlHeld = false;
-            await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
-            await input.KeyDownAsync(InputKey.Delete, cancellationToken).ConfigureAwait(false);
-            await input.KeyUpAsync(InputKey.Delete, cancellationToken).ConfigureAwait(false);
-            await input.TypeTextAsync(color.ToHex(), cancellationToken).ConfigureAwait(false);
-            await input.KeyDownAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
-            await input.KeyUpAsync(InputKey.Enter, cancellationToken).ConfigureAwait(false);
-            await Task.Delay(CommitSettleDelay, cancellationToken).ConfigureAwait(false);
+            if (input is IInputSafetyController safety)
+            {
+                // Roblox can retain a stale pen-down state even after the
+                // physical button was released. Clear it before moving from
+                // the canvas to the HEX field so that move cannot draw a
+                // diagonal connector across the artwork.
+                await safety.ReleaseAllKeysAsync(cancellationToken).ConfigureAwait(false);
+                // Spread the releases over several rendered frames. Sending
+                // the same events in one native batch is not sufficient when
+                // Roblox retained its previous-frame pen latch.
+                for (var confirmation = 0; confirmation < 4; confirmation++)
+                {
+                    await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+                    if (confirmation < 3)
+                    {
+                        await Task.Delay(24, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+            }
 
-            return new(true, $"Selected {color.ToHex()} in Podiums.");
+            await Task.Delay(45, cancellationToken).ConfigureAwait(false);
+
+            var hex = color.ToHex();
+            var calibratedPoint = context.Map(layout.HexInput);
+            var verticalStep = Math.Clamp(
+                (int)Math.Round(32d * Math.Max(1d, context.Target.Dpi / 96d)),
+                28,
+                52);
+            var candidates = new[]
+            {
+                calibratedPoint,
+                new ScreenPoint(calibratedPoint.X, calibratedPoint.Y - verticalStep),
+                new ScreenPoint(calibratedPoint.X, calibratedPoint.Y - (verticalStep * 2)),
+                new ScreenPoint(calibratedPoint.X, calibratedPoint.Y + verticalStep)
+            }.Distinct().ToArray();
+            foreach (var hexPoint in candidates)
+            {
+                // Podiums' TextBox needs the same real double-click gesture a
+                // user performs. Keep the two clicks close enough that Roblox
+                // recognizes them as a double click rather than two slow
+                // independent clicks.
+                await input.ClickAsync(hexPoint, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await Task.Delay(DoubleClickInterval, cancellationToken).ConfigureAwait(false);
+                await input.ClickAsync(hexPoint, cancellationToken: cancellationToken).ConfigureAwait(false);
+                await Task.Delay(FocusSettleDelay, cancellationToken).ConfigureAwait(false);
+
+                // Make deletion explicit: select the entire current value,
+                // clear it with both common editing keys, select once more to
+                // defeat partial word selection, then type the complete HEX
+                // value as real foreground keyboard input.
+                await SelectAllAsync().ConfigureAwait(false);
+                await PressAsync(InputKey.Backspace).ConfigureAwait(false);
+                await PressAsync(InputKey.Delete).ConfigureAwait(false);
+                await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+                await SelectAllAsync().ConfigureAwait(false);
+                await PressAsync(InputKey.Backspace).ConfigureAwait(false);
+                await input.TypeTextAsync(hex, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+                if (input is IClipboardInputController clipboard)
+                {
+                    if (!await VerifyFieldTextAsync(clipboard, hex).ConfigureAwait(false))
+                    {
+                        // Some Roblox TextBox versions ignore Unicode packets
+                        // but accept clipboard paste. Clear the field again and
+                        // use paste as a verified fallback at the same point.
+                        await SelectAllAsync().ConfigureAwait(false);
+                        await PressAsync(InputKey.Backspace).ConfigureAwait(false);
+                        await clipboard.SetClipboardTextAsync(hex, cancellationToken).ConfigureAwait(false);
+                        await ChordAsync(InputKey.V).ConfigureAwait(false);
+                        await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+                        if (!await VerifyFieldTextAsync(clipboard, hex).ConfigureAwait(false))
+                        {
+                            // Never use Escape: Roblox handles it globally and
+                            // opens the system menu over the canvas.
+                            await SafetyReleaseBeforeRetryAsync().ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+                }
+
+                await PressAsync(InputKey.Enter).ConfigureAwait(false);
+                await Task.Delay(CommitSettleDelay, cancellationToken).ConfigureAwait(false);
+                return new(true, $"Selected and verified {hex} in Podiums.");
+            }
+
+            return new(false, $"Podiums HEX input did not contain {hex} at the calibrated field or nearby fallback positions.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -86,9 +155,81 @@ public sealed class PodiumsColorAdapter : IColorAdapter
 
             if (input is IInputSafetyController safety)
             {
+                await TryReleaseAllButtonsAsync(safety).ConfigureAwait(false);
                 await TryReleaseAllKeysAsync(safety).ConfigureAwait(false);
             }
         }
+
+        async ValueTask SelectAllAsync()
+        {
+            await input.KeyDownAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
+            controlHeld = true;
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyDownAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
+            aHeld = true;
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(InputKey.A, cancellationToken).ConfigureAwait(false);
+            aHeld = false;
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
+            controlHeld = false;
+            await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+        }
+
+        async ValueTask SafetyReleaseBeforeRetryAsync()
+        {
+            if (input is IInputSafetyController safety)
+            {
+                await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+                await safety.ReleaseAllKeysAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await Task.Delay(55, cancellationToken).ConfigureAwait(false);
+        }
+
+        async ValueTask PressAsync(InputKey key)
+        {
+            await input.KeyDownAsync(key, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+
+        async ValueTask ChordAsync(InputKey key)
+        {
+            await input.KeyDownAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
+            controlHeld = true;
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyDownAsync(key, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(key, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(KeySettleDelay, cancellationToken).ConfigureAwait(false);
+            await input.KeyUpAsync(InputKey.Control, cancellationToken).ConfigureAwait(false);
+            controlHeld = false;
+        }
+
+        async ValueTask<bool> VerifyFieldTextAsync(
+            IClipboardInputController clipboard,
+            string expected)
+        {
+            await SelectAllAsync().ConfigureAwait(false);
+            var sentinel = $"GameDraw-verify-{Guid.NewGuid():N}";
+            await clipboard.SetClipboardTextAsync(sentinel, cancellationToken).ConfigureAwait(false);
+            await ChordAsync(InputKey.C).ConfigureAwait(false);
+            await Task.Delay(SelectionSettleDelay, cancellationToken).ConfigureAwait(false);
+            var copied = await clipboard.GetClipboardTextAsync(cancellationToken).ConfigureAwait(false);
+            return NormalizeHex(copied) == NormalizeHex(expected);
+        }
+    }
+
+    private static string? NormalizeHex(string? value)
+    {
+        var normalized = value?.Trim();
+        if (normalized?.StartsWith('#') == true)
+        {
+            normalized = normalized[1..];
+        }
+
+        return normalized?.ToUpperInvariant();
     }
 
     private static async ValueTask TryReleaseKeyAsync(IInputController input, InputKey key)
@@ -109,6 +250,18 @@ public sealed class PodiumsColorAdapter : IColorAdapter
         try
         {
             await input.ReleaseAllKeysAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Do not mask the result of the color operation.
+        }
+    }
+
+    private static async ValueTask TryReleaseAllButtonsAsync(IInputSafetyController input)
+    {
+        try
+        {
+            await input.ReleaseAllButtonsAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch
         {
@@ -148,7 +301,15 @@ public sealed class PodiumsToolAdapter
 
         try
         {
+            if (context.Input is IInputSafetyController safety)
+            {
+                await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+                await safety.ReleaseAllKeysAsync(cancellationToken).ConfigureAwait(false);
+                await Task.Delay(80, cancellationToken).ConfigureAwait(false);
+            }
+
             await context.Input.ClickAsync(context.Map(point), cancellationToken: cancellationToken).ConfigureAwait(false);
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
             return new(true, $"Selected Podiums {tool} tool.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -245,7 +406,10 @@ public sealed class PodiumsGameAdapter : IGameAdapter
         DrawingMode.Fill,
         DrawingMode.Hybrid,
         DrawingMode.CleanStroke,
-        DrawingMode.ArtistStroke
+        DrawingMode.ArtistStroke,
+        DrawingMode.SafeStamp,
+        DrawingMode.HalftoneStamp,
+        DrawingMode.SmartFill
     };
 
     public string Id => "podiums.roblox";
@@ -411,6 +575,9 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
     private readonly IGameAdapterExecutionContext _context;
     private readonly PodiumsColorAdapter _colors = new();
     private readonly bool _selectColors;
+    private PodiumsToolKind? _activeTool;
+    private bool _resetPenLatchBetweenColors;
+    private bool _manageDrawingTools;
 
     public PodiumsExecutionHooks(
         GameProfile profile,
@@ -422,15 +589,31 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
         _selectColors = selectColors;
     }
 
-    public ValueTask BeforePlanAsync(
+    public async ValueTask BeforePlanAsync(
         GameDraw.Core.Drawing.DrawingPlan plan,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         cancellationToken.ThrowIfCancellationRequested();
-        // Respect the exact tool and brush size already selected by the user.
-        // Execution preparation must not click any Podiums drawing controls.
-        return ValueTask.CompletedTask;
+        // Every automated colour change leaves the canvas, regardless of the
+        // drawing mode. Treat all of them as a strong pointer-capture boundary.
+        _resetPenLatchBetweenColors = _selectColors;
+        _manageDrawingTools = plan.Mode == DrawingMode.SmartFill;
+        if (plan.Mode != DrawingMode.SmartFill)
+        {
+            // Existing modes keep the user's selected drawing tool and brush.
+            return;
+        }
+
+        var layout = PodiumsProfileSettings.ReadControlLayout(_profile);
+        if (plan.EnumerateStrokes().Any(item =>
+                item.Stroke.ToolAction == GameDraw.Core.Drawing.DrawingToolAction.Fill) &&
+            !layout.HasFillTool)
+        {
+            throw new InvalidOperationException("스마트 외곽선·채우기를 사용하려면 페인트 통 위치를 먼저 설정하세요.");
+        }
+
+        await SelectToolAsync(PodiumsToolKind.Pencil, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask BeforeColorGroupAsync(
@@ -443,9 +626,85 @@ public sealed class PodiumsExecutionHooks : IDrawingExecutionHooks
             return;
         }
 
+        if (_resetPenLatchBetweenColors &&
+            _context.Input is IPointerCaptureResetController captureReset)
+        {
+            // Also reset before the first HEX visit. A prior cancelled run can
+            // leave Podiums latched even though this plan has not drawn yet.
+            await captureReset.ResetPointerCaptureAsync(
+                _context.Target.Handle,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else if (colorGroupIndex > 0 && _resetPenLatchBetweenColors)
+        {
+            await ResetStationaryPenLatchAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var result = await _colors.SelectColorAsync(color, _profile, _context, cancellationToken)
             .ConfigureAwait(false);
         EnsureSucceeded(result);
+    }
+
+    public async ValueTask BeforeStrokeAsync(
+        GameDraw.Core.Drawing.DrawingStroke stroke,
+        int strokeIndex,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stroke);
+        if (!_manageDrawingTools)
+        {
+            // Preserve the tool selected by the user for all normal modes.
+            // Clicking Pencil here adds an unnecessary HEX -> tool -> canvas
+            // trip and was another source of long accidental connectors.
+            return;
+        }
+
+        var desired = stroke.ToolAction == GameDraw.Core.Drawing.DrawingToolAction.Fill
+            ? PodiumsToolKind.Fill
+            : PodiumsToolKind.Pencil;
+        if (_activeTool == desired)
+        {
+            return;
+        }
+
+        await SelectToolAsync(desired, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask SelectToolAsync(
+        PodiumsToolKind tool,
+        CancellationToken cancellationToken)
+    {
+        var result = await new PodiumsToolAdapter()
+            .SelectToolAsync(tool, _profile, _context, cancellationToken)
+            .ConfigureAwait(false);
+        EnsureSucceeded(result);
+        _activeTool = tool;
+    }
+
+    private async ValueTask ResetStationaryPenLatchAsync(CancellationToken cancellationToken)
+    {
+        // A complete stationary click at the already-finished point resets
+        // Podiums' internal drag latch without creating a connector. It is
+        // followed by a full released frame before any movement toward HEX.
+        if (_context.Input is IInputSafetyController safety)
+        {
+            await safety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // The old 10 ms tap could begin and end between two Roblox render
+        // samples. Hold both phases long enough for 30 Hz canvases to observe
+        // a complete new press/release cycle at the already-finished point.
+        await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+        await _context.Input.MouseDownAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+        await _context.Input.MouseUpAsync(InputMouseButton.Left, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(90, cancellationToken).ConfigureAwait(false);
+        if (_context.Input is IInputSafetyController finalSafety)
+        {
+            await finalSafety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Delay(36, cancellationToken).ConfigureAwait(false);
+            await finalSafety.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static void EnsureSucceeded(AdapterActionResult result)

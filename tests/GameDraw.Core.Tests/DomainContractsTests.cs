@@ -82,5 +82,8 @@ public sealed class DomainContractsTests
         Assert.Contains(DrawingMode.VerticalScanline, Enum.GetValues<DrawingMode>());
         Assert.Contains(DrawingMode.CleanStroke, Enum.GetValues<DrawingMode>());
         Assert.Contains(DrawingMode.ArtistStroke, Enum.GetValues<DrawingMode>());
+        Assert.Contains(DrawingMode.SafeStamp, Enum.GetValues<DrawingMode>());
+        Assert.Contains(DrawingMode.HalftoneStamp, Enum.GetValues<DrawingMode>());
+        Assert.Contains(DrawingRenderStyle.GrayscalePhoto, Enum.GetValues<DrawingRenderStyle>());
     }
 }

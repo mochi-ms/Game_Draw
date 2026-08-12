@@ -47,8 +47,20 @@ public sealed record CapturedWindowFrame(
     DateTimeOffset CapturedAt,
     ReadOnlyMemory<byte> BgraPixels);
 
-public interface IWindowsInputController : IInputSafetyController
+public interface IWindowsInputController : IPointerCaptureResetController
 {
+    /// <summary>
+    /// Releases every mouse button and moves in one ordered native input
+    /// batch. Game canvases must observe the release before the positioning
+    /// move, even when both are consumed in the same rendered frame.
+    /// </summary>
+    async ValueTask MoveWithButtonsReleasedAsync(
+        ScreenPoint point,
+        CancellationToken cancellationToken = default)
+    {
+        await ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        await MoveToAsync(point, cancellationToken).ConfigureAwait(false);
+    }
 }
 
 public interface IWindowsHotkeyService

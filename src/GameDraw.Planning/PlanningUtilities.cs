@@ -136,7 +136,7 @@ internal static class PlanningUtilities
 
 internal static class StrokeOrdering
 {
-    private const int ExactOrderingLimit = 2_048;
+    private const int PrinterBandCount = 96;
 
     public static IReadOnlyList<DrawingStroke> Order(IReadOnlyList<DrawingStroke> strokes)
     {
@@ -145,78 +145,108 @@ internal static class StrokeOrdering
             return strokes;
         }
 
-        if (strokes.Count > ExactOrderingLimit)
-        {
-            return OrderLargePlan(strokes);
-        }
-
-        var remaining = strokes.ToList();
+        // Keep drawing-tool phases stable (all pencil work before fill work),
+        // then sweep every phase like a printer.  A global nearest-neighbour
+        // search can jump from the top-left to the bottom-right simply because
+        // an endpoint happens to be marginally closer.  Horizontal bands make
+        // vertical progress monotonic while the alternating direction avoids
+        // a full-width return jump at the end of every row.
         var ordered = new List<DrawingStroke>(strokes.Count);
-        var current = new NormalizedPoint(0d, 0d);
-        while (remaining.Count > 0)
+        foreach (var phase in strokes
+                     .GroupBy(stroke => stroke.ToolAction)
+                     .OrderBy(group => group.Key))
         {
-            var bestIndex = 0;
-            var bestDistance = double.PositiveInfinity;
-            var reverse = false;
-            for (var index = 0; index < remaining.Count; index++)
-            {
-                var stroke = remaining[index];
-                var firstDistance = PlanningUtilities.DistanceSquared(current, stroke.Points[0]);
-                var lastDistance = PlanningUtilities.DistanceSquared(current, stroke.Points[^1]);
-                if (firstDistance < bestDistance)
-                {
-                    bestDistance = firstDistance;
-                    bestIndex = index;
-                    reverse = false;
-                }
-
-                if (!stroke.IsClosed && lastDistance < bestDistance)
-                {
-                    bestDistance = lastDistance;
-                    bestIndex = index;
-                    reverse = true;
-                }
-            }
-
-            var selected = remaining[bestIndex];
-            remaining.RemoveAt(bestIndex);
-            if (reverse)
-            {
-                selected = new DrawingStroke(selected.Points.Reverse(), selected.IsClosed);
-            }
-
-            ordered.Add(selected);
-            current = selected.Points[^1];
+            OrderPrinterPhase(phase.ToArray(), ordered);
         }
 
         return ordered;
     }
 
-    private static List<DrawingStroke> OrderLargePlan(IReadOnlyList<DrawingStroke> strokes)
+    private static void OrderPrinterPhase(
+        IReadOnlyList<DrawingStroke> strokes,
+        List<DrawingStroke> destination)
     {
-        var ordered = new List<DrawingStroke>(strokes.Count);
         var rows = strokes
-            .GroupBy(stroke => Math.Round(stroke.Points[0].Y, 9))
+            .Select(stroke => new PrinterStroke(stroke, Center(stroke)))
+            .GroupBy(item => Math.Clamp(
+                (int)Math.Floor(item.Center.Y * PrinterBandCount),
+                0,
+                PrinterBandCount - 1))
             .OrderBy(group => group.Key)
             .ToArray();
+        var current = new NormalizedPoint(0d, 0d);
         for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
         {
             var leftToRight = rowIndex % 2 == 0;
             var row = leftToRight
-                ? rows[rowIndex].OrderBy(stroke => Math.Min(stroke.Points[0].X, stroke.Points[^1].X))
-                : rows[rowIndex].OrderByDescending(stroke => Math.Max(stroke.Points[0].X, stroke.Points[^1].X));
-            foreach (var stroke in row)
+                ? rows[rowIndex]
+                    .OrderBy(item => item.Center.X)
+                    .ThenBy(item => item.Center.Y)
+                : rows[rowIndex]
+                    .OrderByDescending(item => item.Center.X)
+                    .ThenBy(item => item.Center.Y);
+            foreach (var item in row)
             {
-                var firstX = stroke.Points[0].X;
-                var lastX = stroke.Points[^1].X;
-                var shouldReverse = !stroke.IsClosed &&
-                    ((leftToRight && lastX < firstX) || (!leftToRight && lastX > firstX));
-                ordered.Add(shouldReverse
-                    ? new DrawingStroke(stroke.Points.Reverse(), stroke.IsClosed)
-                    : stroke);
+                var selected = Orient(item.Stroke, current, leftToRight);
+                destination.Add(selected);
+                current = selected.IsClosed ? selected.Points[0] : selected.Points[^1];
             }
         }
-
-        return ordered;
     }
+
+    private static DrawingStroke Orient(
+        DrawingStroke stroke,
+        NormalizedPoint current,
+        bool leftToRight)
+    {
+        if (stroke.Points.Count <= 1 || stroke.ToolAction == DrawingToolAction.Fill)
+        {
+            return stroke;
+        }
+
+        if (stroke.IsClosed)
+        {
+            var startIndex = 0;
+            var bestDistance = double.PositiveInfinity;
+            for (var index = 0; index < stroke.Points.Count; index++)
+            {
+                var distance = PlanningUtilities.DistanceSquared(current, stroke.Points[index]);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    startIndex = index;
+                }
+            }
+
+            if (startIndex == 0)
+            {
+                return stroke;
+            }
+
+            var rotated = stroke.Points
+                .Skip(startIndex)
+                .Concat(stroke.Points.Take(startIndex));
+            return new DrawingStroke(rotated, isClosed: true, toolAction: stroke.ToolAction);
+        }
+
+        var first = stroke.Points[0];
+        var last = stroke.Points[^1];
+        var directionRequestsReverse = leftToRight ? last.X < first.X : last.X > first.X;
+        if (Math.Abs(first.X - last.X) <= 1e-9)
+        {
+            directionRequestsReverse = PlanningUtilities.DistanceSquared(current, last) <
+                PlanningUtilities.DistanceSquared(current, first);
+        }
+
+        return directionRequestsReverse
+            ? new DrawingStroke(stroke.Points.Reverse(), stroke.IsClosed, stroke.ToolAction)
+            : stroke;
+    }
+
+    private static NormalizedPoint Center(DrawingStroke stroke)
+        => new(
+            stroke.Points.Average(point => point.X),
+            stroke.Points.Average(point => point.Y));
+
+    private sealed record PrinterStroke(DrawingStroke Stroke, NormalizedPoint Center);
 }

@@ -96,6 +96,25 @@ public sealed class ImagingPipelineTests
     }
 
     [Fact]
+    public void FullPalettePreservesEveryDistinctColorWhenSourceHasAtMost256()
+    {
+        var colors = Enumerable.Range(0, 256)
+            .Select(value => new RgbColor((byte)value, (byte)(255 - value), (byte)(value / 2)))
+            .ToArray();
+        var source = new CoreImageFrame(
+            256,
+            1,
+            colors.Select(RgbaPixel.Opaque).ToArray());
+
+        var palette = new AdaptivePaletteBuilder().Build(
+            source,
+            new PaletteBuildOptions { MaxColors = 256, MaxSamples = 512 });
+
+        Assert.Equal(256, palette.Count);
+        Assert.All(colors, color => Assert.Contains(color, palette.Colors));
+    }
+
+    [Fact]
     public void PaletteQuantizerMapsAndDithersWithoutChangingDimensions()
     {
         var source = new CoreImageFrame(4, 1, new[]
@@ -268,5 +287,34 @@ public sealed class ImagingPipelineTests
         Assert.False(result.Cropped);
         Assert.Equal(frame.Width, result.Frame.Width);
         Assert.Equal(frame.Height, result.Frame.Height);
+    }
+
+    [Fact]
+    public void SmartSubjectDoesNotEraseBrightSkinConnectedToWhiteBackground()
+    {
+        const int width = 30;
+        const int height = 30;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        var skin = new RgbColor(248, 238, 228);
+        for (var y = 6; y <= 25; y++)
+        {
+            for (var x = 8; x <= 21; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(skin);
+            }
+        }
+
+        for (var y = 4; y <= 9; y++)
+        {
+            for (var x = 6; x <= 23; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(new RgbColor(28, 22, 20));
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsOpaque && pixel.Color == skin);
     }
 }

@@ -21,8 +21,10 @@ internal static class CleanStrokePlanner
         foreach (var paletteIndex in PlanningUtilities.GetPaletteIndices(image, options))
         {
             var mask = BuildMask(image, paletteIndex, options);
-            Thin(mask, image.Width, image.Height);
-            foreach (var traced in Trace(mask, image.Width, image.Height))
+            var skeleton = (bool[])mask.Clone();
+            Thin(skeleton, image.Width, image.Height);
+            var colorStrokes = new List<DrawingStroke>();
+            foreach (var traced in Trace(skeleton, image.Width, image.Height))
             {
                 if (PathLength(traced.Points, traced.IsClosed) < options.MinimumStrokeLengthPixels)
                 {
@@ -41,15 +43,393 @@ internal static class CleanStrokePlanner
                         (point.X + 0.5d) / image.Width,
                         (point.Y + 0.5d) / image.Height))
                     .ToArray();
-                PlanningUtilities.AddStroke(
-                    strokesByColor,
-                    paletteIndex,
-                    new DrawingStroke(points, traced.IsClosed && points.Length >= 3));
+                colorStrokes.Add(new DrawingStroke(points, traced.IsClosed && points.Length >= 3));
+            }
+
+            // Artist mode is width-aware. A centreline is ideal for thin hair
+            // and facial contours, but it destroys intentional heavy ink such
+            // as eyelashes and overlapping locks of hair. Rasterize the real
+            // two-pixel in-game brush over the centreline, then add only the
+            // still-uncovered source ink as short local strokes. This keeps the
+            // authored line weight without returning to full-image scan rows.
+            if (mode == DrawingMode.ArtistStroke)
+            {
+                var heavyInk = BuildHeavyInkMask(mask, image.Width, image.Height);
+                colorStrokes.AddRange(CreateInkCoverageStrokes(
+                    mask,
+                    heavyInk,
+                    colorStrokes,
+                    image.Width,
+                    image.Height));
+            }
+
+            foreach (var stroke in colorStrokes)
+            {
+                PlanningUtilities.AddStroke(strokesByColor, paletteIndex, stroke);
             }
         }
 
         return PlanningUtilities.BuildPlan(image, mode, strokesByColor, options);
     }
+
+    private static IEnumerable<DrawingStroke> CreateInkCoverageStrokes(
+        bool[] sourceInk,
+        bool[] requiredInk,
+        IReadOnlyList<DrawingStroke> centerlines,
+        int width,
+        int height)
+    {
+        var covered = new bool[sourceInk.Length];
+        var coverageRuns = new List<CoverageRun>();
+        foreach (var stroke in centerlines)
+        {
+            RasterizeStroke(stroke, width, height, covered);
+        }
+
+        for (var y = 0; y < height; y++)
+        {
+            var x = 0;
+            while (x < width)
+            {
+                if (!requiredInk[(y * width) + x] || covered[(y * width) + x])
+                {
+                    x++;
+                    continue;
+                }
+
+                var start = x;
+                while (start > 0 && requiredInk[(y * width) + start - 1])
+                {
+                    start--;
+                }
+
+                while (x + 1 < width && requiredInk[(y * width) + x + 1])
+                {
+                    x++;
+                }
+
+                var end = x;
+                var centerY = ChooseCoverageCenterY(y, height);
+                var centerStart = ChooseCoverageStartX(sourceInk, start, end, centerY, width, height);
+                var centerEnd = Math.Max(centerStart, end);
+                var points = centerStart == centerEnd
+                    ? new[] { PlanningUtilities.Center(centerStart, centerY, width, height) }
+                    : new[]
+                    {
+                        PlanningUtilities.Center(centerStart, centerY, width, height),
+                        PlanningUtilities.Center(centerEnd, centerY, width, height)
+                    };
+                var stroke = new DrawingStroke(points);
+                RasterizeStroke(stroke, width, height, covered);
+                coverageRuns.Add(new CoverageRun(centerStart, centerEnd, centerY));
+                x++;
+            }
+        }
+
+        foreach (var stroke in MergeCoverageRuns(coverageRuns, sourceInk, width, height))
+        {
+            yield return stroke;
+        }
+    }
+
+    private static IEnumerable<DrawingStroke> MergeCoverageRuns(
+        IReadOnlyList<CoverageRun> runs,
+        bool[] sourceInk,
+        int width,
+        int height)
+    {
+        var chains = new List<CoverageChain>();
+        foreach (var run in runs.OrderBy(item => item.Y).ThenBy(item => item.StartX))
+        {
+            CoverageChain? selected = null;
+            foreach (var chain in chains
+                         .Where(item => run.Y > item.LastY && run.Y - item.LastY <= 2)
+                         .OrderBy(item => Math.Abs(item.LastX - ((run.StartX + run.EndX) / 2d))))
+            {
+                if (chain.LastX < run.StartX || chain.LastX > run.EndX ||
+                    !ConnectorStaysInInk(sourceInk, chain.LastX, chain.LastY, run.Y, width, height))
+                {
+                    continue;
+                }
+
+                selected = chain;
+                break;
+            }
+
+            if (selected is null)
+            {
+                selected = new CoverageChain();
+                chains.Add(selected);
+                selected.Points.Add(new CoveragePoint(run.StartX, run.Y));
+                if (run.EndX != run.StartX)
+                {
+                    selected.Points.Add(new CoveragePoint(run.EndX, run.Y));
+                }
+            }
+            else
+            {
+                var entryX = selected.LastX;
+                selected.Points.Add(new CoveragePoint(entryX, run.Y));
+                var distanceToStart = entryX - run.StartX;
+                var distanceToEnd = run.EndX - entryX;
+                if (distanceToStart <= distanceToEnd)
+                {
+                    if (entryX != run.StartX)
+                    {
+                        selected.Points.Add(new CoveragePoint(run.StartX, run.Y));
+                    }
+
+                    if (run.EndX != run.StartX)
+                    {
+                        selected.Points.Add(new CoveragePoint(run.EndX, run.Y));
+                    }
+                }
+                else
+                {
+                    if (entryX != run.EndX)
+                    {
+                        selected.Points.Add(new CoveragePoint(run.EndX, run.Y));
+                    }
+
+                    if (run.StartX != run.EndX)
+                    {
+                        selected.Points.Add(new CoveragePoint(run.StartX, run.Y));
+                    }
+                }
+            }
+
+            selected.LastX = selected.Points[^1].X;
+            selected.LastY = run.Y;
+        }
+
+        foreach (var chain in chains)
+        {
+            var points = chain.Points
+                .Where((point, index) => index == 0 || point != chain.Points[index - 1])
+                .Select(point => PlanningUtilities.Center(point.X, point.Y, width, height))
+                .ToArray();
+            if (points.Length > 0)
+            {
+                yield return new DrawingStroke(points);
+            }
+        }
+    }
+
+    private static bool ConnectorStaysInInk(
+        bool[] sourceInk,
+        int x,
+        int startY,
+        int endY,
+        int width,
+        int height)
+    {
+        for (var y = startY; y <= endY; y++)
+        {
+            if (BrushPointScore(sourceInk, x, y, width, height) < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool[] BuildHeavyInkMask(bool[] sourceInk, int width, int height)
+    {
+        var core = new bool[sourceInk.Length];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (!sourceInk[(y * width) + x])
+                {
+                    continue;
+                }
+
+                var neighbors = 0;
+                for (var offsetY = -2; offsetY <= 2; offsetY++)
+                {
+                    for (var offsetX = -2; offsetX <= 2; offsetX++)
+                    {
+                        var sampleX = x + offsetX;
+                        var sampleY = y + offsetY;
+                        if ((uint)sampleX < (uint)width &&
+                            (uint)sampleY < (uint)height &&
+                            sourceInk[(sampleY * width) + sampleX])
+                        {
+                            neighbors++;
+                        }
+                    }
+                }
+
+                core[(y * width) + x] = neighbors >= 19;
+            }
+        }
+
+        // Bring back the boundary of every genuinely dense region. A lone
+        // anti-aliased contour has no dense core and therefore remains a clean
+        // centreline, while eyelashes and overlapping hair retain their mass.
+        var heavy = new bool[sourceInk.Length];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                if (!sourceInk[(y * width) + x])
+                {
+                    continue;
+                }
+
+                for (var offsetY = -2; offsetY <= 2 && !heavy[(y * width) + x]; offsetY++)
+                {
+                    for (var offsetX = -2; offsetX <= 2; offsetX++)
+                    {
+                        var sampleX = x + offsetX;
+                        var sampleY = y + offsetY;
+                        if ((uint)sampleX < (uint)width &&
+                            (uint)sampleY < (uint)height &&
+                            core[(sampleY * width) + sampleX])
+                        {
+                            heavy[(y * width) + x] = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return heavy;
+    }
+
+    private static int ChooseCoverageCenterY(int y, int height)
+    {
+        // The real minimum brush covers two logical rows. Bias its centre one
+        // row forward so a single local pass covers the current and next row;
+        // this halves pen lifts inside dense ink regions.
+        return Math.Min(height - 1, y + 1);
+    }
+
+    private static int ChooseCoverageStartX(
+        bool[] sourceInk,
+        int start,
+        int end,
+        int centerY,
+        int width,
+        int height)
+    {
+        if (start < end)
+        {
+            // A two-pixel brush is biased one pixel left/up. Starting one cell
+            // to the right reconstructs the original run instead of growing it.
+            return Math.Min(end, start + 1);
+        }
+
+        if (start + 1 >= width)
+        {
+            return start;
+        }
+
+        return BrushPointScore(sourceInk, start + 1, centerY, width, height) >
+               BrushPointScore(sourceInk, start, centerY, width, height)
+            ? start + 1
+            : start;
+    }
+
+    private static int BrushPointScore(
+        bool[] sourceInk,
+        int centerX,
+        int centerY,
+        int width,
+        int height)
+    {
+        var score = 0;
+        for (var y = centerY - 1; y <= centerY; y++)
+        {
+            for (var x = centerX - 1; x <= centerX; x++)
+            {
+                if ((uint)x >= (uint)width || (uint)y >= (uint)height)
+                {
+                    continue;
+                }
+
+                score += sourceInk[(y * width) + x] ? 1 : -1;
+            }
+        }
+
+        return score;
+    }
+
+    private static void RasterizeStroke(
+        DrawingStroke stroke,
+        int width,
+        int height,
+        bool[] covered)
+    {
+        var previous = ToPixel(stroke.Points[0], width, height);
+        Paint(previous.X, previous.Y);
+        for (var index = 1; index < stroke.Points.Count; index++)
+        {
+            var next = ToPixel(stroke.Points[index], width, height);
+            PaintLine(previous, next);
+            previous = next;
+        }
+
+        if (stroke.IsClosed && stroke.Points.Count > 1)
+        {
+            PaintLine(previous, ToPixel(stroke.Points[0], width, height));
+        }
+
+        void PaintLine((int X, int Y) first, (int X, int Y) second)
+        {
+            var x = first.X;
+            var y = first.Y;
+            var deltaX = Math.Abs(second.X - first.X);
+            var stepX = first.X < second.X ? 1 : -1;
+            var deltaY = -Math.Abs(second.Y - first.Y);
+            var stepY = first.Y < second.Y ? 1 : -1;
+            var error = deltaX + deltaY;
+            while (true)
+            {
+                Paint(x, y);
+                if (x == second.X && y == second.Y)
+                {
+                    break;
+                }
+
+                var doubled = error * 2;
+                if (doubled >= deltaY)
+                {
+                    error += deltaY;
+                    x += stepX;
+                }
+
+                if (doubled <= deltaX)
+                {
+                    error += deltaX;
+                    y += stepY;
+                }
+            }
+        }
+
+        void Paint(int centerX, int centerY)
+        {
+            // Must match DrawingPlanPostProcessor.RenderPreview(..., 2).
+            for (var y = centerY - 1; y <= centerY; y++)
+            {
+                for (var x = centerX - 1; x <= centerX; x++)
+                {
+                    if ((uint)x < (uint)width && (uint)y < (uint)height)
+                    {
+                        covered[(y * width) + x] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    private static (int X, int Y) ToPixel(NormalizedPoint point, int width, int height)
+        => (
+            Math.Clamp((int)Math.Floor(point.X * width), 0, width - 1),
+            Math.Clamp((int)Math.Floor(point.Y * height), 0, height - 1));
 
     private static bool[] BuildMask(
         QuantizedImage image,
@@ -422,4 +802,17 @@ internal static class CleanStrokePlanner
     private readonly record struct PixelPoint(double X, double Y);
 
     private sealed record TracedStroke(IReadOnlyList<PixelPoint> Points, bool IsClosed);
+
+    private readonly record struct CoverageRun(int StartX, int EndX, int Y);
+
+    private readonly record struct CoveragePoint(int X, int Y);
+
+    private sealed class CoverageChain
+    {
+        public List<CoveragePoint> Points { get; } = new();
+
+        public int LastX { get; set; }
+
+        public int LastY { get; set; }
+    }
 }
