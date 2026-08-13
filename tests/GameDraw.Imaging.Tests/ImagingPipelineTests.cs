@@ -16,6 +16,31 @@ namespace GameDraw.Imaging.Tests;
 public sealed class ImagingPipelineTests
 {
     [Fact]
+    public void NearWhiteBackgroundRemovalPreservesEnclosedTeethAndHighlights()
+    {
+        const int width = 7;
+        const int height = 7;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        for (var y = 2; y <= 4; y++)
+        {
+            for (var x = 2; x <= 4; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        // Enclosed white detail representing a tooth/eye highlight.
+        pixels[(3 * width) + 3] = RgbaPixel.Opaque(new RgbColor(250, 248, 246));
+        var result = NearWhiteBackgroundProcessor.RemoveBorderConnected(
+            new CoreImageFrame(width, height, pixels));
+
+        Assert.Equal(0, result[0, 0].Alpha);
+        Assert.Equal(255, result[2, 2].Alpha);
+        Assert.Equal(255, result[3, 3].Alpha);
+        Assert.Equal(new RgbColor(250, 248, 246), result[3, 3].Color);
+    }
+
+    [Fact]
     public void ColorMathUsesPerceptualLabDistance()
     {
         var black = ColorMath.ToLab(RgbColor.Black);
@@ -93,6 +118,25 @@ public sealed class ImagingPipelineTests
         Assert.Equal(first.Colors, second.Colors);
         Assert.Contains(first.Colors, color => color.R > 200 && color.B < 50);
         Assert.Contains(first.Colors, color => color.B > 200 && color.R < 50);
+    }
+
+    [Fact]
+    public void FullPalettePreservesEveryDistinctColorWhenSourceHasAtMost256()
+    {
+        var colors = Enumerable.Range(0, 256)
+            .Select(value => new RgbColor((byte)value, (byte)(255 - value), (byte)(value / 2)))
+            .ToArray();
+        var source = new CoreImageFrame(
+            256,
+            1,
+            colors.Select(RgbaPixel.Opaque).ToArray());
+
+        var palette = new AdaptivePaletteBuilder().Build(
+            source,
+            new PaletteBuildOptions { MaxColors = 256, MaxSamples = 512 });
+
+        Assert.Equal(256, palette.Count);
+        Assert.All(colors, color => Assert.Contains(color, palette.Colors));
     }
 
     [Fact]
@@ -268,5 +312,104 @@ public sealed class ImagingPipelineTests
         Assert.False(result.Cropped);
         Assert.Equal(frame.Width, result.Frame.Width);
         Assert.Equal(frame.Height, result.Frame.Height);
+    }
+
+    [Fact]
+    public void SmartSubjectDoesNotEraseBrightSkinConnectedToWhiteBackground()
+    {
+        const int width = 30;
+        const int height = 30;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        var skin = new RgbColor(248, 238, 228);
+        for (var y = 6; y <= 25; y++)
+        {
+            for (var x = 8; x <= 21; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(skin);
+            }
+        }
+
+        for (var y = 4; y <= 9; y++)
+        {
+            for (var x = 6; x <= 23; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(new RgbColor(28, 22, 20));
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsOpaque && pixel.Color == skin);
+    }
+
+    [Fact]
+    public void SmartSubjectKeepsSubstantialClothingSeparatedByWhiteShirt()
+    {
+        const int width = 40;
+        const int height = 40;
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(RgbColor.White), width * height).ToArray();
+        var hair = new RgbColor(28, 24, 22);
+        var jacket = new RgbColor(70, 145, 225);
+        for (var y = 4; y <= 20; y++)
+        {
+            for (var x = 12; x <= 27; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(hair);
+            }
+        }
+
+        // Two substantial jacket components separated from the head by a
+        // white shirt/background gap. They are part of the portrait and must
+        // not be discarded as detached background noise.
+        for (var y = 25; y < height; y++)
+        {
+            for (var x = 5; x <= 13; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(jacket);
+            }
+
+            for (var x = 26; x <= 34; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(jacket);
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.True(result.Frame.Pixels.Count(pixel => pixel.IsOpaque && pixel.Color == jacket) >= 200);
+    }
+
+    [Fact]
+    public void SmartSubjectFollowsSoftBorderGradientWithoutCrossingSubjectEdge()
+    {
+        const int width = 48;
+        const int height = 36;
+        var pixels = new RgbaPixel[width * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var borderDistance = Math.Min(Math.Min(x, width - 1 - x), Math.Min(y, height - 1 - y));
+                var value = (byte)Math.Max(210, 246 - (borderDistance * 3));
+                pixels[(y * width) + x] = RgbaPixel.Opaque(new RgbColor(value, value, value));
+            }
+        }
+
+        var subject = new RgbColor(38, 92, 174);
+        for (var y = 8; y <= 30; y++)
+        {
+            for (var x = 16; x <= 31; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(subject);
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsOpaque && pixel.Color == subject);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsTransparent);
     }
 }

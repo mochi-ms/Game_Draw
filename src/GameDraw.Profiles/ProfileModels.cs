@@ -49,6 +49,10 @@ public sealed record BrushProfile
 
     public double PixelPitchPixels { get; init; } = 1d;
 
+    public double ScreenDiameterPixels { get; init; } = 1d;
+
+    public bool IsMeasured { get; init; }
+
     public bool SupportsFillTool { get; init; }
 }
 
@@ -102,7 +106,10 @@ public sealed record GameProfile
             DrawingMode.Fill,
             DrawingMode.Hybrid,
             DrawingMode.CleanStroke,
-            DrawingMode.ArtistStroke
+            DrawingMode.ArtistStroke,
+            DrawingMode.SafeStamp,
+            DrawingMode.HalftoneStamp,
+            DrawingMode.SmartFill
         };
 
     public static GameProfile CreateDefault(
@@ -169,6 +176,11 @@ public sealed record GameProfile
         if (!double.IsFinite(Brush.PixelPitchPixels) || Brush.PixelPitchPixels <= 0)
         {
             errors.Add("픽셀 간격은 유한한 양수여야 합니다.");
+        }
+
+        if (!double.IsFinite(Brush.ScreenDiameterPixels) || Brush.ScreenDiameterPixels <= 0)
+        {
+            errors.Add("화면 브러시 지름은 유한한 양수여야 합니다.");
         }
 
         if (!double.IsFinite(Timing.MovementPixelsPerSecond) || Timing.MovementPixelsPerSecond <= 0)

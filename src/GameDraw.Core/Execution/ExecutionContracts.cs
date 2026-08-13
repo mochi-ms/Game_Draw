@@ -28,9 +28,23 @@ public sealed record DrawingExecutionOptions
 
     public int StrokeStartSettleMilliseconds { get; init; } = 8;
 
+    /// <summary>
+    /// Extra button-up events spread across the stationary stroke-start guard.
+    /// Frame-sampled canvases can miss a single release even though Windows
+    /// has already cleared its local button state.
+    /// </summary>
+    public int StrokeStartReleaseConfirmationCount { get; init; }
+
     public int PenDownSettleMilliseconds { get; init; } = 4;
 
     public int PenUpSettleMilliseconds { get; init; } = 18;
+
+    /// <summary>
+    /// Extra stationary mouse-up events sent before the cursor is allowed to
+    /// move to another stroke. Set to zero for rapid dot plans that already
+    /// hold the released cursor still for the full pen-up guard interval.
+    /// </summary>
+    public int AdditionalPenUpConfirmationCount { get; init; } = 2;
 
     public int MinimumPenDownMilliseconds { get; init; } = 20;
 
@@ -40,6 +54,13 @@ public sealed record DrawingExecutionOptions
     /// between two distant vector points can otherwise appear as a dot.
     /// </summary>
     public int MaximumMoveStepPixels { get; init; } = 6;
+
+    /// <summary>
+    /// Maximum distance drawn while continuously holding the mouse button.
+    /// Long logical strokes are lifted and resumed at the same coordinate so
+    /// frame-sampled game canvases do not turn a long drag into a blob.
+    /// </summary>
+    public int MaximumContinuousPenDownDistancePixels { get; init; } = 24;
 
     public bool RequireForegroundTarget { get; init; } = true;
 
@@ -72,6 +93,11 @@ public sealed record DrawingExecutionOptions
             throw new ArgumentOutOfRangeException(nameof(StrokeStartSettleMilliseconds));
         }
 
+        if (StrokeStartReleaseConfirmationCount is < 0 or > 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(StrokeStartReleaseConfirmationCount));
+        }
+
         if (PenDownSettleMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(PenDownSettleMilliseconds));
@@ -82,6 +108,11 @@ public sealed record DrawingExecutionOptions
             throw new ArgumentOutOfRangeException(nameof(PenUpSettleMilliseconds));
         }
 
+        if (AdditionalPenUpConfirmationCount is < 0 or > 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(AdditionalPenUpConfirmationCount));
+        }
+
         if (MinimumPenDownMilliseconds < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumPenDownMilliseconds));
@@ -90,6 +121,11 @@ public sealed record DrawingExecutionOptions
         if (MaximumMoveStepPixels is < 1 or > 64)
         {
             throw new ArgumentOutOfRangeException(nameof(MaximumMoveStepPixels));
+        }
+
+        if (MaximumContinuousPenDownDistancePixels is < 4 or > 512)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumContinuousPenDownDistancePixels));
         }
     }
 }
@@ -109,6 +145,12 @@ public interface IDrawingExecutionHooks
         RgbColor color,
         int colorGroupIndex,
         CancellationToken cancellationToken = default);
+
+    ValueTask BeforeStrokeAsync(
+        DrawingStroke stroke,
+        int strokeIndex,
+        CancellationToken cancellationToken = default)
+        => ValueTask.CompletedTask;
 }
 
 public sealed record DrawingProgress(

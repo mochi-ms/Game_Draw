@@ -31,6 +31,8 @@ public partial class App : Application
 
     public static DrawingSessionController DrawingSession { get; private set; } = null!;
 
+    public static RecordingLibraryService RecordingLibrary { get; private set; } = null!;
+
     /// <summary>
     /// The native window handle (HWND). Use for file pickers,
     /// <c>DataTransferManager</c>, and any WinRT interop that requires
@@ -53,10 +55,17 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        Window = new MainWindow();
         DrawingSession = new DrawingSessionController();
+        RecordingLibrary = new RecordingLibraryService();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        Window.Closed += (_, _) => DrawingSession.Dispose();
+        // MainWindow immediately creates MainPage and its recording-library view.
+        // Services must therefore exist before the visual tree is constructed.
+        Window = new MainWindow();
+        Window.Closed += (_, _) =>
+        {
+            DrawingSession.Dispose();
+            RecordingLibrary.Dispose();
+        };
         Window.Activate();
     }
 }

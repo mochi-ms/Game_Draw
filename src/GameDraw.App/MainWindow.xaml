@@ -18,9 +18,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="GameDraw">
+        <TitleBar x:Name="AppTitleBar" Title="GameDraw" Subtitle="설치 빌드 확인 중">
             <TitleBar.IconSource>
-                <FontIconSource Glyph="&#xE8B9;" />
+                <BitmapIconSource
+                    ShowAsMonochrome="False"
+                    UriSource="ms-appx:///Assets/Square44x44Logo.scale-200.png" />
             </TitleBar.IconSource>
         </TitleBar>
 

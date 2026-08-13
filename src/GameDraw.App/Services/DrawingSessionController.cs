@@ -13,6 +13,7 @@ using GameDraw.Core.Vision;
 using GameDraw.GameAdapters;
 using GameDraw.GameAdapters.Podiums;
 using GameDraw.GameAdapters.Podiums.Calibration;
+using GameDraw.Imaging.Analysis;
 using GameDraw.Imaging.Decoding;
 using GameDraw.Imaging.Palettes;
 using GameDraw.Imaging.Processing;
@@ -37,7 +38,7 @@ public sealed record PreparedDrawing(
     bool FacePriorityApplied)
 {
     public string Summary =>
-        $"{StyleLabel(RenderStyle)} · {QualityLabel(Quality)} · " +
+        $"{ModeLabel(Planning.Plan.Mode, RenderStyle)} · {QualityLabel(Quality)} · " +
         $"{Planning.Plan.LogicalSize.Width}×{Planning.Plan.LogicalSize.Height} · " +
         $"{Planning.Estimate.ColorCount}색 · {Planning.Estimate.StrokeCount:N0}스트로크 · " +
         $"예상 {FormatDuration(Planning.Estimate.EstimatedDuration)}" +
@@ -49,15 +50,33 @@ public sealed record PreparedDrawing(
         DrawingRenderStyle.NaturalLineArt => "자연스러운 펜선",
         DrawingRenderStyle.LineArt => "정밀 윤곽선",
         DrawingRenderStyle.AutoColor => "원본 색상",
+        DrawingRenderStyle.PhotoHalftone => "고품질 망점 사진",
+        DrawingRenderStyle.ArtistLineArt => "작가식 정밀 선화",
+        DrawingRenderStyle.SmartPaint => "AI 밑그림·안전 채색",
+        DrawingRenderStyle.FullPalette => "원본 팔레트 256색",
+        DrawingRenderStyle.GrayscalePhoto => "AI 흑백 사진",
         _ => "자동"
+    };
+
+    private static string ModeLabel(DrawingMode mode, DrawingRenderStyle style) => mode switch
+    {
+        DrawingMode.SafeStamp when style == DrawingRenderStyle.FullPalette => "원본 팔레트 256색",
+        DrawingMode.SafeStamp when style == DrawingRenderStyle.GrayscalePhoto => "AI 흑백 사진",
+        DrawingMode.SafeStamp => "1점 안전 점묘",
+        DrawingMode.HalftoneStamp => "고품질 망점 사진",
+        DrawingMode.SmartFill => "AI 밑그림·안전 채색",
+        DrawingMode.ArtistStroke when style == DrawingRenderStyle.ArtistLineArt => "작가식 정밀 선화",
+        DrawingMode.ArtistStroke => "원본 펜선 보존",
+        DrawingMode.CleanStroke => "자연스러운 펜선",
+        _ => StyleLabel(style)
     };
 
     private static string QualityLabel(DrawingQualityPreset quality) => quality switch
     {
-        DrawingQualityPreset.FastDraft => "빠른 초안",
-        DrawingQualityPreset.High => "고품질",
-        DrawingQualityPreset.OriginalPriority => "원본 우선",
-        _ => "균형"
+        DrawingQualityPreset.FastDraft => "속도 우선",
+        DrawingQualityPreset.High => "정밀",
+        DrawingQualityPreset.OriginalPriority => "최고 정밀",
+        _ => "추천"
     };
 
     private static string FormatDuration(TimeSpan duration)
@@ -68,8 +87,15 @@ public sealed record PreparedDrawing(
                 : $"{duration.TotalSeconds:0.#}초";
 }
 
+public sealed record BrushMeasurementResult(
+    double ScreenDiameterPixels,
+    double LogicalDiameterPixels,
+    int SuccessfulDots,
+    double Confidence);
+
 public sealed class DrawingSessionController : IDisposable
 {
+    private static readonly double[] BrushTestFractions = [0.2d, 0.5d, 0.8d];
     private readonly ImageDecoder _decoder = new();
     private readonly ImageProcessingPipeline _imaging = new();
     private readonly PaletteQuantizer _quantizer = new();
@@ -221,6 +247,66 @@ public sealed class DrawingSessionController : IDisposable
         return _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ScreenRect>> GetExecutionProtectedRegionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!CurrentProfile.Canvas.IsCalibrated)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var target = await FindPodiumsTargetAsync(cancellationToken).ConfigureAwait(false);
+        if (target is null)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var geometry = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false);
+        if (geometry is null || !geometry.IsValid)
+        {
+            return Array.Empty<ScreenRect>();
+        }
+
+        var binding = new TargetWindowBinding(geometry, _geometryProvider, CurrentProfile.Canvas.Bounds);
+        var canvasTopLeft = binding.Map(new NormalizedPoint(0d, 0d));
+        var canvasBottomRight = binding.Map(new NormalizedPoint(1d, 1d));
+        var regions = new List<ScreenRect>
+        {
+            new(
+                canvasTopLeft.X,
+                canvasTopLeft.Y,
+                Math.Max(1, canvasBottomRight.X - canvasTopLeft.X + 1),
+                Math.Max(1, canvasBottomRight.Y - canvasTopLeft.Y + 1))
+        };
+
+        var controls = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
+        AddControlRegion(controls.PencilTool);
+        AddControlRegion(controls.EraserTool);
+        if (controls.HasFillTool)
+        {
+            AddControlRegion(controls.FillTool);
+        }
+
+        if (controls.HasColorControls)
+        {
+            AddControlRegion(controls.HexInput, 96, 48);
+        }
+
+        return regions;
+
+        void AddControlRegion(NormalizedPoint point, int width = 56, int height = 56)
+        {
+            if (!point.IsWithinUnitSquare)
+            {
+                return;
+            }
+
+            var screen = binding.MapClient(point);
+            regions.Add(new ScreenRect(screen.X - (width / 2), screen.Y - (height / 2), width, height));
+        }
+    }
+
     public async Task<bool> ActivateTargetAsync(
         TargetWindowSnapshot target,
         CancellationToken cancellationToken = default)
@@ -241,6 +327,7 @@ public sealed class DrawingSessionController : IDisposable
         DrawingQualityPreset quality,
         double speedMultiplier,
         bool smartSubjectEnabled,
+        NormalizedRect? manualCrop = null,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -273,9 +360,22 @@ public sealed class DrawingSessionController : IDisposable
         status?.Report("원본 이미지를 디코딩하는 중입니다…");
         var decoded = await _decoder.DecodeFileAsync(sourcePath, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+        var focusSource = manualCrop is { IsWithinUnitSquare: true, Width: > 0.001d, Height: > 0.001d }
+            ? CropFrame(decoded.Frame, manualCrop.Value)
+            : decoded.Frame;
         var subjectFocus = smartSubjectEnabled
-            ? await Task.Run(() => SubjectFocusProcessor.Process(decoded.Frame), cancellationToken).ConfigureAwait(false)
-            : SubjectFocusResult.Unchanged(decoded.Frame);
+            ? await Task.Run(() => SubjectFocusProcessor.Process(
+                focusSource,
+                renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+                    ? new SubjectFocusOptions
+                    {
+                        BackgroundTolerance = 42d,
+                        LocalGradientTolerance = 18d,
+                        MaximumGradientExpansion = 1.75d,
+                        CropMarginRatio = 0.055d
+                    }
+                    : null), cancellationToken).ConfigureAwait(false)
+            : SubjectFocusResult.Unchanged(focusSource);
         if (subjectFocus.BackgroundRemoved)
         {
             status?.Report(subjectFocus.PersonLikely
@@ -283,35 +383,141 @@ public sealed class DrawingSessionController : IDisposable
                 : "피사체를 중심으로 배경을 정리하고 크롭했습니다…");
         }
 
-        var processingSource = subjectFocus.Frame;
+        var colorRendering = renderStyle is DrawingRenderStyle.AutoColor or DrawingRenderStyle.SmartPaint or DrawingRenderStyle.FullPalette or DrawingRenderStyle.GrayscalePhoto;
+        // SubjectFocus already removes only border-connected background. The
+        // former global near-white filter also erased teeth, eye whites, and
+        // clothing highlights, leaving the later black detail pass with no
+        // light pixels to repaint it in Podiums.
+        var processingSource = colorRendering && !subjectFocus.BackgroundRemoved
+            ? NearWhiteBackgroundProcessor.RemoveBorderConnected(subjectFocus.Frame)
+            : subjectFocus.Frame;
+        var smartPaintColorLimit = quality switch
+        {
+            DrawingQualityPreset.FastDraft => 16,
+            DrawingQualityPreset.Balanced => 32,
+            DrawingQualityPreset.High => 64,
+            _ => 128
+        };
+        var effectiveMaximumColors = renderStyle == DrawingRenderStyle.FullPalette
+            ? FullPaletteColorBudget(maximumColors, speedMultiplier)
+            : colorRendering
+            ? Math.Min(
+                Math.Min(maximumColors, ColorMaximumColors(quality)),
+                renderStyle == DrawingRenderStyle.SmartPaint ? smartPaintColorLimit : int.MaxValue)
+            : maximumColors;
         var requestedBounds = CurrentProfile.Canvas.IsCalibrated
             ? new PixelSize(CurrentProfile.Canvas.LogicalWidth, CurrentProfile.Canvas.LogicalHeight)
             : new PixelSize(512, 512);
-        var qualitySettings = QualitySettings.For(quality, renderStyle == DrawingRenderStyle.AutoColor);
-        var analysisBounds = new PixelSize(
-            Math.Min(qualitySettings.MaximumDimension, requestedBounds.Width),
-            Math.Min(qualitySettings.MaximumDimension, requestedBounds.Height));
-        var target = FitWithin(
-            new PixelSize(processingSource.Width, processingSource.Height),
-            analysisBounds);
+        var qualitySettings = QualitySettings.For(quality, colorRendering);
+        var requestedMaximumDimension = renderStyle switch
+        {
+            DrawingRenderStyle.PhotoHalftone => Math.Min(
+                qualitySettings.MaximumDimension,
+                HalftoneMaximumDimension(quality)),
+            DrawingRenderStyle.AutoColor or DrawingRenderStyle.SmartPaint or DrawingRenderStyle.FullPalette or DrawingRenderStyle.GrayscalePhoto => Math.Min(
+                qualitySettings.MaximumDimension,
+                ColorMaximumDimension(quality)),
+            _ when mode == DrawingMode.SafeStamp => Math.Min(
+                qualitySettings.MaximumDimension,
+                SafeStampMaximumDimension(quality)),
+            _ => qualitySettings.MaximumDimension
+        };
+        // AI previews were collapsing to ~104px whenever a noisy brush
+        // measurement reported 7px. Keep the source-resolution budget for AI
+        // modes; their printer pitch is handled by the plan brush below.
+        var maximumAnalysisDimension = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? requestedMaximumDimension
+            : BrushAwareMaximumDimension(
+                requestedMaximumDimension,
+                requestedBounds,
+                CurrentProfile.Brush,
+                1.15d);
+        var analysisBounds = FitWithin(
+            requestedBounds,
+            new PixelSize(maximumAnalysisDimension, maximumAnalysisDimension));
+        var fittedSource = ResizeAndLetterbox(processingSource, analysisBounds);
 
         status?.Report("색상과 해상도를 최적화하는 중입니다…");
         ImageProcessingResult image;
-        if (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt)
+        if (renderStyle == DrawingRenderStyle.PhotoHalftone)
         {
             image = await Task.Run(() =>
             {
-                var resized = ImageResampler.Resize(processingSource, target);
-                var lineArt = renderStyle == DrawingRenderStyle.NaturalLineArt
-                    ? NaturalLineArtProcessor.Extract(resized, new NaturalLineArtOptions
+                var resized = fittedSource;
+                var halftone = PhotoHalftoneProcessor.Process(resized, new PhotoHalftoneOptions
+                {
+                    ToneGamma = quality == DrawingQualityPreset.FastDraft ? 1.18d : 1.08d,
+                    ToneStrength = quality == DrawingQualityPreset.OriginalPriority ? 0.94d : 0.88d,
+                    EdgeStrength = quality == DrawingQualityPreset.FastDraft ? 0.62d : 0.72d
+                });
+                var palette = new ColorPalette(new[] { RgbColor.Black }, "photo-halftone");
+                var quantized = _quantizer.Quantize(halftone, palette, new QuantizationOptions
+                {
+                    DitherMode = DitherMode.None,
+                    PreserveAlpha = true
+                });
+                cancellationToken.ThrowIfCancellationRequested();
+                return new ImageProcessingResult(decoded, halftone, palette, quantized);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        else if (renderStyle == DrawingRenderStyle.ArtistLineArt)
+        {
+            image = await Task.Run(() =>
+            {
+                var resized = fittedSource;
+                var artistLineArt = ArtistLineArtProcessor.Process(resized, new ArtistLineArtOptions
+                {
+                    EdgeThreshold = quality == DrawingQualityPreset.FastDraft ? 16d : 9d,
+                    AdaptivePercentile = quality switch
                     {
-                        DetailLevel = qualitySettings.DetailLevel,
-                        MinimumComponentPixels = qualitySettings.MinimumComponentPixels
+                        DrawingQualityPreset.FastDraft => 0.68d,
+                        DrawingQualityPreset.Balanced => 0.60d,
+                        DrawingQualityPreset.High => 0.54d,
+                        _ => 0.49d
+                    },
+                    WeakEdgeRatio = quality == DrawingQualityPreset.FastDraft ? 0.28d : 0.18d,
+                    MinimumComponentPixels = quality == DrawingQualityPreset.FastDraft ? 4 : 2
+                });
+                var palette = new ColorPalette(new[] { RgbColor.Black }, "artist-line-art");
+                var quantized = _quantizer.Quantize(artistLineArt, palette, new QuantizationOptions
+                {
+                    DitherMode = DitherMode.None,
+                    PreserveAlpha = true
+                });
+                cancellationToken.ThrowIfCancellationRequested();
+                return new ImageProcessingResult(decoded, artistLineArt, palette, quantized);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        else if (renderStyle == DrawingRenderStyle.GrayscalePhoto)
+        {
+            image = await Task.Run(() =>
+            {
+                var grayscale = GrayscalePhotoProcessor.Process(fittedSource);
+                var shadeCount = Math.Clamp(effectiveMaximumColors, 4, 32);
+                var shades = Enumerable.Range(0, shadeCount)
+                    .Select(index =>
+                    {
+                        var value = (byte)Math.Round(index * 255d / (shadeCount - 1));
+                        return new RgbColor(value, value, value);
                     })
-                    : LineArtProcessor.Extract(resized, new LineArtOptions
-                    {
-                        MinimumComponentPixels = qualitySettings.MinimumComponentPixels
-                    });
+                    .ToArray();
+                var palette = new ColorPalette(shades, "ai-grayscale-photo");
+                var quantized = _quantizer.Quantize(grayscale, palette, new QuantizationOptions
+                {
+                    DitherMode = DitherMode.None,
+                    PreserveAlpha = true
+                });
+                return new ImageProcessingResult(decoded, grayscale, palette, quantized);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        else if (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt)
+        {
+            image = await Task.Run(() =>
+            {
+                var resized = fittedSource;
+                var lineArt = LineArtProcessor.Extract(resized, PhotoLineOptions(
+                    quality,
+                    precise: renderStyle == DrawingRenderStyle.LineArt));
                 var palette = new ColorPalette(new[] { RgbColor.Black }, "line-art");
                 var quantized = _quantizer.Quantize(lineArt, palette, new QuantizationOptions
                 {
@@ -326,10 +532,10 @@ public sealed class DrawingSessionController : IDisposable
         {
             var processingOptions = new ImageProcessingOptions
             {
-                TargetSize = target,
+                TargetSize = analysisBounds,
                 Palette = new PaletteBuildOptions
                 {
-                    MaxColors = maximumColors,
+                    MaxColors = effectiveMaximumColors,
                     MaxSamples = 250_000
                 },
                 Quantization = new QuantizationOptions
@@ -340,7 +546,7 @@ public sealed class DrawingSessionController : IDisposable
             };
             image = await Task.Run(
                 () => _imaging.ProcessFrame(
-                    processingSource,
+                    fittedSource,
                     processingOptions,
                     sourcePath,
                     decoded.FormatName,
@@ -350,19 +556,66 @@ public sealed class DrawingSessionController : IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
         status?.Report("그리기 경로와 예상 시간을 계산하는 중입니다…");
+        // At a 256px AI plan on the current Podiums canvas, one plan pixel is
+        // already approximately the visible 3px pencil pitch. Inflating the
+        // virtual brush from a stale 7px measurement blurred both the preview
+        // and the actual result a second time.
+        var planBrushDiameter = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? 1
+            : EffectivePlanBrushDiameter(
+                CurrentProfile.Brush,
+                image.Quantized.Width,
+                image.Quantized.Height,
+                requestedBounds);
         var plannerOptions = new DrawingPlannerOptions
         {
-            Mode = (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt) && mode == DrawingMode.Auto
+            Mode = (renderStyle is DrawingRenderStyle.LineArt or DrawingRenderStyle.NaturalLineArt or DrawingRenderStyle.ArtistLineArt) && mode == DrawingMode.Auto
                 ? DrawingMode.CleanStroke
                 : mode,
             MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond * speedMultiplier,
             InterStrokeDelayMilliseconds = speedMultiplier >= 8d
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
-            ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
-            PerStrokeSafetyDelayMilliseconds = speedMultiplier >= 8d ? 38 : 37,
+            // A verified Podiums HEX edit includes a focus boundary, true
+            // double click, clear/type/readback and Enter commit. The old
+            // 10~50 ms estimate ignored almost all of that work.
+            ColorChangeDelayMilliseconds = colorRendering
+                ? 900
+                : (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
+            PerStrokeSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill
+                ? speedMultiplier >= 8d ? 170 : speedMultiplier >= 5d ? 190 : 220
+                : speedMultiplier >= 8d ? 155 : 180,
+            PerPointSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill
+                ? speedMultiplier >= 8d ? 6d : 8d
+                : 2d,
+            IncludeInitialColorSelection = colorRendering,
+            // At maximum speed, merge only low-contrast palette islands that
+            // are smaller than the measured physical pen footprint. Dark eyes,
+            // line work and other high-contrast details fail the colour-distance
+            // gate and remain exact strokes.
+            MaximumTinyColorRegionPixels = renderStyle == DrawingRenderStyle.FullPalette && speedMultiplier >= 8d
+                ? quality switch
+                {
+                    DrawingQualityPreset.OriginalPriority => 3,
+                    DrawingQualityPreset.High => 4,
+                    DrawingQualityPreset.Balanced => 4,
+                    _ => 5
+                }
+                : 0,
+            MaximumTinyColorRegionDistance = renderStyle == DrawingRenderStyle.FullPalette && speedMultiplier >= 8d
+                ? quality switch
+                {
+                    DrawingQualityPreset.OriginalPriority => 44d,
+                    DrawingQualityPreset.High => 48d,
+                    DrawingQualityPreset.Balanced => 52d,
+                    _ => 60d
+                }
+                : 0d,
             StrokeSimplificationTolerancePixels = qualitySettings.SimplificationTolerance,
-            MinimumStrokeLengthPixels = qualitySettings.MinimumStrokeLength
+            MinimumStrokeLengthPixels = qualitySettings.MinimumStrokeLength,
+            BrushDiameterPixels = planBrushDiameter,
+            OrderColorGroupsByTravel = renderStyle == DrawingRenderStyle.FullPalette,
+            PriorityRegion = subjectFocus.FacePriorityRegion
         };
         var planning = await Task.Run(
             () => _planner.Plan(image.Quantized, plannerOptions),
@@ -380,7 +633,7 @@ public sealed class DrawingSessionController : IDisposable
             };
             facePriorityApplied = subjectFocus.FacePriorityRegion is not null;
         }
-        else if (subjectFocus.FacePriorityRegion is { } faceRegion)
+        else if (renderStyle is not DrawingRenderStyle.SmartPaint and not DrawingRenderStyle.FullPalette and not DrawingRenderStyle.GrayscalePhoto && subjectFocus.FacePriorityRegion is { } faceRegion)
         {
             var prioritized = DrawingPlanPostProcessor.PrioritizeRegion(planning.Plan, faceRegion);
             planning = planning with
@@ -391,11 +644,33 @@ public sealed class DrawingSessionController : IDisposable
             facePriorityApplied = true;
         }
 
+        // Artistic/face-priority passes above may deliberately change stroke
+        // order.  Make the final executable plan printer-like for every mode:
+        // top to bottom with alternating horizontal direction and no extra HEX
+        // visits.
+        var coverageOrdered = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto or DrawingRenderStyle.FullPalette
+            ? DrawingPlanPostProcessor.OrderColorsByCoverage(
+                planning.Plan,
+                preserveFirstGroup: planning.Plan.Mode == DrawingMode.SmartFill)
+            : planning.Plan;
+        var printerOrdered = DrawingPlanPostProcessor.OrderForPrinterTravel(coverageOrdered);
+        planning = planning with
+        {
+            Plan = printerOrdered,
+            Estimate = _planner.Estimate(printerOrdered, plannerOptions)
+        };
+
         // Podiums' minimum visible pencil (3 screen pixels in the current UI)
         // maps to roughly a two-pixel logical brush on the usual calibrated
         // canvas. Render artist paths at that width so the preview represents
         // the manually selected in-game pencil more faithfully.
-        var previewBrushDiameter = planning.Plan.Mode == DrawingMode.ArtistStroke ? 2 : 1;
+        // AI raster paths are executed with Podiums' minimum visible pencil,
+        // which covers more than one logical sample on the usual canvas.
+        // Show that conservative physical footprint so mouth/eye crowding is
+        // visible before F5 instead of promising an unrealistically thin path.
+        var previewBrushDiameter = renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
+            ? 2
+            : planBrushDiameter;
         var preview = DrawingPlanPostProcessor.RenderPreview(planning.Plan, previewBrushDiameter);
         return new PreparedDrawing(
             sourcePath,
@@ -403,7 +678,7 @@ public sealed class DrawingSessionController : IDisposable
             planning,
             preview,
             subjectFocus,
-            maximumColors,
+            effectiveMaximumColors,
             renderStyle,
             quality,
             speedMultiplier,
@@ -413,6 +688,7 @@ public sealed class DrawingSessionController : IDisposable
 
     public async Task<DrawingExecutionResult> ExecuteAsync(
         PreparedDrawing prepared,
+        long focusSinkWindowHandle,
         IProgress<DrawingProgress>? progress = null,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
@@ -447,11 +723,16 @@ public sealed class DrawingSessionController : IDisposable
         var executionCanvas = await VerifyVisualPreflightAsync(target, status, cancellationToken).ConfigureAwait(false);
 
         var binding = new TargetWindowBinding(geometry, _geometryProvider, executionCanvas);
+        var safeStamp = prepared.Planning.Plan.Mode is
+            DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill;
         var input = new WindowsInputController(new WindowsInputOptions
         {
+            FocusSinkWindowHandle = focusSinkWindowHandle,
             // Roblox coalesces very dense mouse messages. Frame-paced input
             // preserves curves and prevents skipped pen-up events.
-            MaxEventsPerSecond = prepared.SpeedMultiplier >= 8d ? 144d : 96d
+            MaxEventsPerSecond = safeStamp
+                ? prepared.SpeedMultiplier >= 8d ? 960d : prepared.SpeedMultiplier >= 5d ? 720d : 192d
+                : prepared.SpeedMultiplier >= 8d ? 480d : 192d
         });
         var executor = new WindowsDrawingExecutor(input, binding);
         var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
@@ -461,7 +742,7 @@ public sealed class DrawingSessionController : IDisposable
         var hooks = new PodiumsExecutionHooks(
             CurrentProfile,
             context,
-            selectColors: prepared.RenderStyle == DrawingRenderStyle.AutoColor);
+            selectColors: prepared.RenderStyle is DrawingRenderStyle.AutoColor or DrawingRenderStyle.SmartPaint or DrawingRenderStyle.FullPalette or DrawingRenderStyle.GrayscalePhoto);
         lock (_executionLock)
         {
             _activeInput = input;
@@ -476,17 +757,34 @@ public sealed class DrawingSessionController : IDisposable
                 {
                     MovementPixelsPerSecond = CurrentProfile.Timing.MovementPixelsPerSecond,
                     SpeedMultiplier = prepared.SpeedMultiplier,
-                    InterStrokeDelayMilliseconds = prepared.SpeedMultiplier >= 8d
+                    InterStrokeDelayMilliseconds = safeStamp
+                        ? 0
+                        : prepared.SpeedMultiplier >= 8d
                         ? 0
                         : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
-                    StrokeStartSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 4 : 6,
-                    PenDownSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 3 : 3,
-                    PenUpSettleMilliseconds = prepared.SpeedMultiplier >= 8d ? 34 : 24,
-                    MinimumPenDownMilliseconds = prepared.SpeedMultiplier >= 8d ? 17 : 18,
+                    // Connected raster ink stays on one pen-down path. Every
+                    // remaining disconnected move is promoted by the executor
+                    // to the full capture/focus fence.
+                    StrokeStartSettleMilliseconds = safeStamp
+                        ? prepared.SpeedMultiplier >= 8d ? 2 : prepared.SpeedMultiplier >= 5d ? 7 : 14
+                        : 10,
+                    StrokeStartReleaseConfirmationCount = safeStamp && prepared.SpeedMultiplier >= 8d ? 0 : 1,
+                    PenDownSettleMilliseconds = safeStamp ? 3 : 2,
+                    PenUpSettleMilliseconds = safeStamp
+                        ? prepared.SpeedMultiplier >= 8d ? 30 : prepared.SpeedMultiplier >= 5d ? 34 : 40
+                        : 36,
+                    // Maximum speed keeps three stationary up deliveries for
+                    // local hops. Long travel and HEX changes still use the
+                    // stronger capture/focus and neutralization boundaries.
+                    AdditionalPenUpConfirmationCount = 2,
+                    MinimumPenDownMilliseconds = safeStamp
+                        ? prepared.SpeedMultiplier >= 8d ? 18 : prepared.SpeedMultiplier >= 5d ? 20 : 24
+                        : prepared.SpeedMultiplier >= 8d ? 17 : 18,
                     MaximumMoveStepPixels = QualitySettings.For(
                         prepared.Quality,
-                        prepared.RenderStyle == DrawingRenderStyle.AutoColor).MaximumMoveStepPixels,
+                        prepared.RenderStyle is DrawingRenderStyle.AutoColor or DrawingRenderStyle.SmartPaint or DrawingRenderStyle.FullPalette or DrawingRenderStyle.GrayscalePhoto).MaximumMoveStepPixels,
+                    MaximumContinuousPenDownDistancePixels = prepared.SpeedMultiplier >= 8d ? 160 : 96,
                     Hooks = hooks,
                     RequireForegroundTarget = true
                 },
@@ -506,6 +804,244 @@ public sealed class DrawingSessionController : IDisposable
         }
     }
 
+    public async Task<string> TestHexColorAsync(
+        RgbColor color,
+        IProgress<string>? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var controls = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
+        if (!CurrentProfile.Canvas.IsCalibrated || !controls.IsConfigured || !controls.HasColorControls)
+        {
+            throw new InvalidOperationException("먼저 캔버스와 HEX 입력칸 위치를 설정하세요.");
+        }
+
+        lock (_executionLock)
+        {
+            if (_activeExecutor is not null)
+            {
+                throw new InvalidOperationException("그리기 실행 중에는 HEX 테스트를 할 수 없습니다.");
+            }
+        }
+
+        status?.Report($"Roblox를 활성화하고 HEX 입력칸에 {color.ToHex()} 색상을 시험합니다…");
+        var target = await WaitForForegroundTargetAsync(TimeSpan.FromSeconds(15), cancellationToken)
+            .ConfigureAwait(false);
+        var geometry = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roblox 창 좌표를 읽지 못했습니다.");
+        var verification = await _adapter.VerifyAsync(target, CurrentProfile, cancellationToken).ConfigureAwait(false);
+        if (!verification.IsSafeToRun)
+        {
+            throw new InvalidOperationException(string.Join(" ", verification.Issues.Select(issue => issue.Message)));
+        }
+
+        using var input = new WindowsInputController(new WindowsInputOptions { MaxEventsPerSecond = 96d });
+        var binding = new TargetWindowBinding(geometry, _geometryProvider, CurrentProfile.Canvas.Bounds);
+        var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
+        var result = await new PodiumsColorAdapter()
+            .SelectColorAsync(color, CurrentProfile, context, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(result.Message ?? "HEX 입력 테스트에 실패했습니다.");
+        }
+
+        status?.Report($"HEX 테스트 완료: 게임 색상이 {color.ToHex()}로 바뀌었는지 확인하세요.");
+        return color.ToHex();
+    }
+
+    public async Task<BrushMeasurementResult> MeasureCurrentBrushAsync(
+        NormalizedRect testRegion,
+        IProgress<string>? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!CurrentProfile.Canvas.IsCalibrated || !testRegion.IsWithinUnitSquare)
+        {
+            throw new InvalidOperationException("캔버스와 유효한 빈 테스트 영역이 필요합니다.");
+        }
+
+        var calibratedCanvas = CurrentProfile.Canvas.Bounds;
+        if (testRegion.X < calibratedCanvas.X ||
+            testRegion.Y < calibratedCanvas.Y ||
+            testRegion.X + testRegion.Width > calibratedCanvas.X + calibratedCanvas.Width ||
+            testRegion.Y + testRegion.Height > calibratedCanvas.Y + calibratedCanvas.Height)
+        {
+            throw new InvalidOperationException("펜 테스트 영역은 저장된 흰색 캔버스 안쪽에서 선택하세요.");
+        }
+
+        lock (_executionLock)
+        {
+            if (_activeExecutor is not null)
+            {
+                throw new InvalidOperationException("그리기 실행 중에는 펜 굵기를 측정할 수 없습니다.");
+            }
+        }
+
+        status?.Report("Roblox를 활성화하고 현재 펜으로 테스트 점 3개를 찍습니다…");
+        var target = await WaitForForegroundTargetAsync(TimeSpan.FromSeconds(15), cancellationToken)
+            .ConfigureAwait(false);
+        var geometry = await _geometryProvider.GetGeometryAsync(target.Handle, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Roblox 창 좌표를 읽지 못했습니다.");
+        var verification = await _adapter.VerifyAsync(target, CurrentProfile, cancellationToken).ConfigureAwait(false);
+        if (!verification.IsSafeToRun)
+        {
+            throw new InvalidOperationException(string.Join(" ", verification.Issues.Select(issue => issue.Message)));
+        }
+
+        var binding = new TargetWindowBinding(geometry, _geometryProvider, CurrentProfile.Canvas.Bounds);
+        using var input = new WindowsInputController(new WindowsInputOptions
+        {
+            MaxEventsPerSecond = 72d,
+            MinimumIntervalMilliseconds = 12
+        });
+        var context = new GameAdapterExecutionContext(input, target, binding.MapClient);
+        var toolResult = await new PodiumsToolAdapter()
+            .SelectToolAsync(PodiumsToolKind.Pencil, CurrentProfile, context, cancellationToken)
+            .ConfigureAwait(false);
+        if (!toolResult.Succeeded)
+        {
+            throw new InvalidOperationException(toolResult.Message ?? "연필 도구를 선택하지 못했습니다.");
+        }
+
+        var controls = PodiumsProfileSettings.ReadControlLayout(CurrentProfile);
+        if (controls.HasColorControls)
+        {
+            var colorResult = await new PodiumsColorAdapter()
+                .SelectColorAsync(RgbColor.Black, CurrentProfile, context, cancellationToken)
+                .ConfigureAwait(false);
+            if (!colorResult.Succeeded)
+            {
+                throw new InvalidOperationException(colorResult.Message ?? "측정용 검정색을 선택하지 못했습니다.");
+            }
+        }
+
+        await Task.Delay(180, cancellationToken).ConfigureAwait(false);
+        var before = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("측정 전 Roblox 화면을 캡처하지 못했습니다.");
+        var points = BrushTestFractions
+            .Select(fraction => new NormalizedPoint(
+                testRegion.X + (testRegion.Width * fraction),
+                testRegion.Y + (testRegion.Height * 0.5d)))
+            .ToArray();
+        foreach (var point in points)
+        {
+            // Measurement clicks intentionally span several Roblox render
+            // frames. A short synthetic click can move to the third point but
+            // have both button transitions coalesced before the canvas sees it.
+            await input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+            await input.MoveWithButtonsReleasedAsync(binding.MapClient(point), cancellationToken).ConfigureAwait(false);
+            await Task.Delay(90, cancellationToken).ConfigureAwait(false);
+            await input.MouseDownAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            await Task.Delay(85, cancellationToken).ConfigureAwait(false);
+            await input.MouseUpAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            await input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+            await Task.Delay(180, cancellationToken).ConfigureAwait(false);
+        }
+
+        await Task.Delay(300, cancellationToken).ConfigureAwait(false);
+        var after = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("측정 후 Roblox 화면을 캡처하지 못했습니다.");
+        var measured = BrushDotAnalyzer.MeasureDiameters(
+            before.ToImageFrame(),
+            after.ToImageFrame(),
+            testRegion,
+            points);
+        if (measured.Count < 3)
+        {
+            status?.Report($"테스트 점이 {measured.Count}/3개만 보여 안전하게 다시 찍는 중…");
+            foreach (var point in points)
+            {
+                await input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+                await input.MoveWithButtonsReleasedAsync(binding.MapClient(point), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(110, cancellationToken).ConfigureAwait(false);
+                await input.MouseDownAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                await Task.Delay(110, cancellationToken).ConfigureAwait(false);
+                await input.MouseUpAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+                await input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+                await Task.Delay(210, cancellationToken).ConfigureAwait(false);
+            }
+
+            await Task.Delay(350, cancellationToken).ConfigureAwait(false);
+            after = await _capture.CaptureAsync(target, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("재시도 후 Roblox 화면을 캡처하지 못했습니다.");
+            measured = BrushDotAnalyzer.MeasureDiameters(
+                before.ToImageFrame(),
+                after.ToImageFrame(),
+                testRegion,
+                points);
+        }
+
+        if (measured.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "지정한 가상 영역의 세 예상 좌표에서 검은 점을 찾지 못했습니다. 빈 흰색 영역을 다시 지정해 주세요.");
+        }
+
+        var ordered = measured.OrderBy(value => value).ToArray();
+        var screenDiameter = ordered[ordered.Length / 2];
+        var canvas = CurrentProfile.Canvas;
+        var screenPerLogicalX = (geometry.ClientBounds.Width * canvas.Bounds.Width) / canvas.LogicalWidth;
+        var screenPerLogicalY = (geometry.ClientBounds.Height * canvas.Bounds.Height) / canvas.LogicalHeight;
+        var screenPerLogical = Math.Sqrt(Math.Max(0.0001d, screenPerLogicalX * screenPerLogicalY));
+        var logicalDiameter = Math.Clamp(screenDiameter / screenPerLogical, 0.5d, 32d);
+        var confidence = Math.Clamp(measured.Count / 3d, 0d, 1d);
+        var profile = CurrentProfile with
+        {
+            Brush = CurrentProfile.Brush with
+            {
+                DiameterPixels = logicalDiameter,
+                PixelPitchPixels = logicalDiameter,
+                ScreenDiameterPixels = screenDiameter,
+                IsMeasured = true
+            }
+        };
+        await _profileStore.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+        CurrentProfile = profile;
+        status?.Report(
+            $"펜 굵기 측정 완료 · 점 {measured.Count}/3 · 화면 {screenDiameter:0.#}px · 가상 캔버스 {logicalDiameter:0.##}칸");
+        return new BrushMeasurementResult(screenDiameter, logicalDiameter, measured.Count, confidence);
+    }
+
+    public async Task<BrushMeasurementResult> ApplyManualBrushDiameterAsync(
+        double screenDiameterPixels,
+        TargetWindowGeometry geometry,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (!double.IsFinite(screenDiameterPixels) || screenDiameterPixels is < 1d or > 32d)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(screenDiameterPixels),
+                "게임에 표시된 펜 굵기는 1~32 사이로 입력하세요.");
+        }
+
+        ArgumentNullException.ThrowIfNull(geometry);
+        if (!geometry.IsValid || !CurrentProfile.Canvas.IsCalibrated)
+        {
+            throw new InvalidOperationException("먼저 Roblox 캔버스 영역을 지정하세요.");
+        }
+
+        var canvas = CurrentProfile.Canvas;
+        var screenPerLogicalX = (geometry.ClientBounds.Width * canvas.Bounds.Width) / canvas.LogicalWidth;
+        var screenPerLogicalY = (geometry.ClientBounds.Height * canvas.Bounds.Height) / canvas.LogicalHeight;
+        var screenPerLogical = Math.Sqrt(Math.Max(0.0001d, screenPerLogicalX * screenPerLogicalY));
+        var logicalDiameter = Math.Clamp(screenDiameterPixels / screenPerLogical, 0.5d, 32d);
+        var profile = CurrentProfile with
+        {
+            Brush = CurrentProfile.Brush with
+            {
+                DiameterPixels = logicalDiameter,
+                PixelPitchPixels = logicalDiameter,
+                ScreenDiameterPixels = screenDiameterPixels,
+                IsMeasured = true
+            }
+        };
+        await _profileStore.SaveAsync(profile, cancellationToken).ConfigureAwait(false);
+        CurrentProfile = profile;
+        return new BrushMeasurementResult(screenDiameterPixels, logicalDiameter, 0, 1d);
+    }
+
     private sealed record QualitySettings(
         int MaximumDimension,
         double DetailLevel,
@@ -521,6 +1057,188 @@ public sealed class DrawingSessionController : IDisposable
             DrawingQualityPreset.OriginalPriority => new(color ? 256 : 512, 0.9d, 3, 0.35d, 2d, 3),
             _ => new(color ? 144 : 384, 0.62d, 6, 0.85d, 3.5d, 6)
         };
+    }
+
+    private static int SafeStampMaximumDimension(DrawingQualityPreset quality) => quality switch
+    {
+        DrawingQualityPreset.FastDraft => 160,
+        DrawingQualityPreset.High => 256,
+        DrawingQualityPreset.OriginalPriority => 320,
+        _ => 208
+    };
+
+    private static int FullPaletteColorBudget(int requestedMaximumColors, double speedMultiplier)
+    {
+        var requested = Math.Clamp(requestedMaximumColors, 2, 256);
+        if (speedMultiplier >= 8d && requested > 64)
+        {
+            // At maximum speed the dominant cost is leaving the canvas and
+            // committing a new HEX value. Perceptual palette construction
+            // keeps the most useful representatives while guaranteeing at
+            // most half as many risky color-control round trips.
+            return Math.Min(128, Math.Max(64, (requested + 1) / 2));
+        }
+
+        if (speedMultiplier >= 5d && requested > 96)
+        {
+            return Math.Min(192, Math.Max(96, (requested * 3 + 3) / 4));
+        }
+
+        return requested;
+    }
+
+    private static int HalftoneMaximumDimension(DrawingQualityPreset quality) => quality switch
+    {
+        DrawingQualityPreset.FastDraft => 128,
+        DrawingQualityPreset.High => 256,
+        DrawingQualityPreset.OriginalPriority => 320,
+        _ => 192
+    };
+
+    private static int ColorMaximumDimension(DrawingQualityPreset quality) => quality switch
+    {
+        DrawingQualityPreset.FastDraft => 128,
+        DrawingQualityPreset.High => 256,
+        DrawingQualityPreset.OriginalPriority => 320,
+        _ => 192
+    };
+
+    private static int ColorMaximumColors(DrawingQualityPreset quality) => quality switch
+    {
+        DrawingQualityPreset.FastDraft => 16,
+        DrawingQualityPreset.High => 64,
+        DrawingQualityPreset.OriginalPriority => 128,
+        _ => 32
+    };
+
+    private static LineArtOptions PhotoLineOptions(DrawingQualityPreset quality, bool precise)
+    {
+        var options = quality switch
+        {
+            DrawingQualityPreset.FastDraft => new LineArtOptions
+            {
+                EdgeThreshold = 42d,
+                WeakEdgeRatio = 0.38d,
+                AdaptivePercentile = 0.82d,
+                MinimumComponentPixels = 7
+            },
+            DrawingQualityPreset.High => new LineArtOptions
+            {
+                EdgeThreshold = 20d,
+                WeakEdgeRatio = 0.27d,
+                AdaptivePercentile = 0.66d,
+                MinimumComponentPixels = 3
+            },
+            DrawingQualityPreset.OriginalPriority => new LineArtOptions
+            {
+                EdgeThreshold = 12d,
+                WeakEdgeRatio = 0.2d,
+                AdaptivePercentile = 0.56d,
+                MinimumComponentPixels = 2
+            },
+            _ => new LineArtOptions
+            {
+                EdgeThreshold = 28d,
+                WeakEdgeRatio = 0.32d,
+                AdaptivePercentile = 0.74d,
+                MinimumComponentPixels = 4
+            }
+        };
+
+        return precise
+            ? options with
+            {
+                EdgeThreshold = Math.Max(8d, options.EdgeThreshold * 0.82d),
+                WeakEdgeRatio = Math.Max(0.16d, options.WeakEdgeRatio - 0.05d),
+                AdaptivePercentile = Math.Max(0.48d, options.AdaptivePercentile - 0.07d),
+                MinimumComponentPixels = Math.Max(1, options.MinimumComponentPixels - 1)
+            }
+            : options;
+    }
+
+    private static int EffectivePlanBrushDiameter(
+        BrushProfile brush,
+        int planWidth,
+        int planHeight,
+        PixelSize logicalCanvas)
+    {
+        if (!brush.IsMeasured)
+        {
+            return 2;
+        }
+
+        var scaleX = planWidth / (double)Math.Max(1, logicalCanvas.Width);
+        var scaleY = planHeight / (double)Math.Max(1, logicalCanvas.Height);
+        var planDiameter = brush.DiameterPixels * Math.Sqrt(Math.Max(0.0001d, scaleX * scaleY));
+        return Math.Clamp((int)Math.Round(planDiameter, MidpointRounding.AwayFromZero), 1, 32);
+    }
+
+    private static int BrushAwareMaximumDimension(
+        int requestedMaximum,
+        PixelSize logicalCanvas,
+        BrushProfile brush,
+        double samplingAllowance)
+    {
+        if (!brush.IsMeasured)
+        {
+            return requestedMaximum;
+        }
+
+        // A plan denser than the measured physical footprint only creates
+        // overlapping blobs, not additional detail. Keep roughly one virtual
+        // sample per real pen diameter with a small anti-aliasing allowance.
+        var logicalLongSide = Math.Max(logicalCanvas.Width, logicalCanvas.Height);
+        var brushLimited = (int)Math.Round(
+            (logicalLongSide / Math.Max(0.5d, brush.DiameterPixels)) * samplingAllowance,
+            MidpointRounding.AwayFromZero);
+        return Math.Min(requestedMaximum, Math.Max(96, brushLimited));
+    }
+
+    private static ImageFrame ResizeAndLetterbox(ImageFrame source, PixelSize canvasSize)
+    {
+        var contentSize = FitWithin(
+            new PixelSize(source.Width, source.Height),
+            canvasSize);
+        var resized = ImageResampler.Resize(source, contentSize);
+        if (contentSize == canvasSize)
+        {
+            return resized;
+        }
+
+        var pixels = Enumerable.Repeat(
+            RgbaPixel.Transparent,
+            checked(canvasSize.Width * canvasSize.Height)).ToArray();
+        var offsetX = (canvasSize.Width - contentSize.Width) / 2;
+        var offsetY = (canvasSize.Height - contentSize.Height) / 2;
+        for (var y = 0; y < contentSize.Height; y++)
+        {
+            for (var x = 0; x < contentSize.Width; x++)
+            {
+                pixels[((y + offsetY) * canvasSize.Width) + x + offsetX] = resized[x, y];
+            }
+        }
+
+        return new ImageFrame(canvasSize.Width, canvasSize.Height, pixels);
+    }
+
+    private static ImageFrame CropFrame(ImageFrame source, NormalizedRect crop)
+    {
+        var left = Math.Clamp((int)Math.Floor(crop.X * source.Width), 0, source.Width - 1);
+        var top = Math.Clamp((int)Math.Floor(crop.Y * source.Height), 0, source.Height - 1);
+        var right = Math.Clamp((int)Math.Ceiling((crop.X + crop.Width) * source.Width), left + 1, source.Width);
+        var bottom = Math.Clamp((int)Math.Ceiling((crop.Y + crop.Height) * source.Height), top + 1, source.Height);
+        var width = right - left;
+        var height = bottom - top;
+        var pixels = new RgbaPixel[checked(width * height)];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                pixels[(y * width) + x] = source[left + x, top + y];
+            }
+        }
+
+        return new ImageFrame(width, height, pixels);
     }
 
     public void TogglePause()
@@ -645,7 +1363,10 @@ public sealed class DrawingSessionController : IDisposable
             return saved;
         }
 
-        return detected;
+        // The user's drag selection is the authoritative virtual canvas. The
+        // detector is only a safety check; substituting its fuzzy bright-area
+        // rectangle here made the same plan shift or scale between runs.
+        return saved;
     }
 
     private static PixelSize FitWithin(PixelSize source, PixelSize bounds)

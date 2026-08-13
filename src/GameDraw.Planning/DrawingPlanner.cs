@@ -105,6 +105,9 @@ public sealed class DrawingPlanner : IDrawingPlanner
             DrawingMode.Hybrid => HybridPlanner.Create(image, options),
             DrawingMode.CleanStroke => CleanStrokePlanner.Create(image, options),
             DrawingMode.ArtistStroke => CleanStrokePlanner.Create(image, options, DrawingMode.ArtistStroke),
+            DrawingMode.SafeStamp => SafeStampPlanner.Create(image, options),
+            DrawingMode.HalftoneStamp => PixelPlanner.Create(image, options, DrawingMode.HalftoneStamp),
+            DrawingMode.SmartFill => SmartFillPlanner.Create(image, options),
             DrawingMode.Auto => throw new ArgumentException("자동 모드는 후보 생성 경로에서만 사용할 수 있습니다.", nameof(mode)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
@@ -125,6 +128,9 @@ public sealed class DrawingPlanner : IDrawingPlanner
             DrawingMode.Hybrid => $"윤곽선+채우기 · 예상 {estimate.EstimatedDuration.TotalSeconds:F1}초",
             DrawingMode.CleanStroke => $"중심선을 연속 획으로 정돈 · 스트로크 {estimate.StrokeCount}개",
             DrawingMode.ArtistStroke => $"외곽선부터 이어 그리는 작가식 펜선 · 스트로크 {estimate.StrokeCount}개",
+            DrawingMode.SafeStamp => $"포인터 이동 전에 매번 펜을 떼는 1점 스탬프 · {estimate.StrokeCount}개",
+            DrawingMode.HalftoneStamp => $"명암 밀도를 독립 망점으로 변환 · {estimate.StrokeCount}개",
+            DrawingMode.SmartFill => $"피사체 외곽선 우선 + 안전 컬러 점묘 · {estimate.StrokeCount}동작",
             _ => "자동 후보"
         };
 }

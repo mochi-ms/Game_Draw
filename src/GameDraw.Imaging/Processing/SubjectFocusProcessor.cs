@@ -6,7 +6,16 @@ namespace GameDraw.Imaging.Processing;
 
 public sealed record SubjectFocusOptions
 {
-    public double BackgroundTolerance { get; init; } = 52d;
+    public double BackgroundTolerance { get; init; } = 24d;
+
+    /// <summary>
+    /// Maximum colour change between two neighbouring background pixels.
+    /// This allows studio walls and phone-camera gradients to be followed
+    /// without treating a sharp subject edge as background.
+    /// </summary>
+    public double LocalGradientTolerance { get; init; } = 14d;
+
+    public double MaximumGradientExpansion { get; init; } = 1.65d;
 
     public double CropMarginRatio { get; init; } = 0.07d;
 
@@ -19,6 +28,16 @@ public sealed record SubjectFocusOptions
         if (!double.IsFinite(BackgroundTolerance) || BackgroundTolerance is <= 0d or > 441.7d)
         {
             throw new ArgumentOutOfRangeException(nameof(BackgroundTolerance));
+        }
+
+        if (!double.IsFinite(LocalGradientTolerance) || LocalGradientTolerance is <= 0d or > 96d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(LocalGradientTolerance));
+        }
+
+        if (!double.IsFinite(MaximumGradientExpansion) || MaximumGradientExpansion is < 1d or > 4d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumGradientExpansion));
         }
 
         if (!double.IsFinite(CropMarginRatio) || CropMarginRatio is < 0d or > 0.4d)
@@ -77,7 +96,12 @@ public static class SubjectFocusProcessor
         }
 
         var backgrounds = EstimateBorderColors(source);
-        var backgroundMask = FloodBackground(source, backgrounds, options.BackgroundTolerance);
+        var backgroundMask = FloodBackground(
+            source,
+            backgrounds,
+            options.BackgroundTolerance,
+            options.LocalGradientTolerance,
+            options.MaximumGradientExpansion);
         KeepPrimarySubjectComponents(backgroundMask, source.Width, source.Height);
         var foregroundCount = backgroundMask.Count(value => !value);
         var foregroundRatio = foregroundCount / (double)source.PixelCount;
@@ -146,17 +170,27 @@ public static class SubjectFocusProcessor
         }
 
         var middle = reds.Count / 2;
+        var median = new RgbColor(reds[middle], greens[middle], blues[middle]);
         var colors = bins.Values
-            .Where(bin => System.Numerics.BitOperations.PopCount((uint)bin.SideMask) >= 2 ||
-                bin.Count >= reds.Count * 0.1d)
+            // A foreground coat, hair, or prop can legitimately touch one
+            // image edge and occupy more than 10% of the border. Requiring the
+            // color on at least two different sides prevents that foreground
+            // color from becoming a flood-fill background seed. The median
+            // border color below still covers a uniform one-sided crop.
+            .Where(bin => System.Numerics.BitOperations.PopCount((uint)bin.SideMask) >= 2)
             .OrderByDescending(bin => bin.Count)
             .Take(10)
             .Select(bin => new RgbColor(
                 (byte)(bin.Red / bin.Count),
                 (byte)(bin.Green / bin.Count),
                 (byte)(bin.Blue / bin.Count)))
+            // Multiple subject edges (for example a jacket touching left,
+            // right, and bottom) are not background merely because they span
+            // several sides. Accept border variants only near the robust
+            // channel median, which represents the dominant background.
+            .Where(color => ColorDistanceSquared(color, median) <= 48d * 48d)
             .ToList();
-        colors.Add(new RgbColor(reds[middle], greens[middle], blues[middle]));
+        colors.Add(median);
         return colors.Distinct().ToArray();
 
         void AddRow(int y, int side)
@@ -191,7 +225,9 @@ public static class SubjectFocusProcessor
     private static bool[] FloodBackground(
         ImageFrame source,
         IReadOnlyList<RgbColor> backgrounds,
-        double tolerance)
+        double tolerance,
+        double localGradientTolerance,
+        double maximumGradientExpansion)
     {
         var backgroundMask = new bool[source.PixelCount];
         var queued = new bool[source.PixelCount];
@@ -209,13 +245,20 @@ public static class SubjectFocusProcessor
         }
 
         var toleranceSquared = tolerance * tolerance;
+        var expandedTolerance = tolerance * maximumGradientExpansion;
+        var expandedToleranceSquared = expandedTolerance * expandedTolerance;
+        var localToleranceSquared = localGradientTolerance * localGradientTolerance;
         while (queue.TryDequeue(out var index))
         {
             var x = index % source.Width;
             var y = index / source.Width;
             var pixel = source[x, y];
-            if (pixel.Alpha >= 16 &&
-                backgrounds.All(background => ColorDistanceSquared(pixel.Color, background) > toleranceSquared))
+            var directBackground = backgrounds.Any(
+                background => ColorDistanceSquared(pixel.Color, background) <= toleranceSquared);
+            var gradientContinuation = !directBackground &&
+                backgrounds.Any(background => ColorDistanceSquared(pixel.Color, background) <= expandedToleranceSquared) &&
+                HasSimilarAcceptedNeighbor(x, y, pixel.Color);
+            if (pixel.Alpha >= 16 && !directBackground && !gradientContinuation)
             {
                 continue;
             }
@@ -228,6 +271,26 @@ public static class SubjectFocusProcessor
         }
 
         return backgroundMask;
+
+        bool HasSimilarAcceptedNeighbor(int x, int y, RgbColor color)
+        {
+            return IsSimilar(x - 1, y) ||
+                   IsSimilar(x + 1, y) ||
+                   IsSimilar(x, y - 1) ||
+                   IsSimilar(x, y + 1);
+
+            bool IsSimilar(int neighborX, int neighborY)
+            {
+                if ((uint)neighborX >= (uint)source.Width || (uint)neighborY >= (uint)source.Height)
+                {
+                    return false;
+                }
+
+                var neighborIndex = (neighborY * source.Width) + neighborX;
+                return backgroundMask[neighborIndex] &&
+                    ColorDistanceSquared(color, source[neighborX, neighborY].Color) <= localToleranceSquared;
+            }
+        }
 
         void Enqueue(int x, int y)
         {
@@ -337,6 +400,7 @@ public static class SubjectFocusProcessor
         }
 
         var minimumDetailArea = Math.Max(3, (int)Math.Round(primary.Area * 0.00015d));
+        var minimumDetachedSubjectArea = Math.Max(16, (int)Math.Round(primary.Area * 0.01d));
         var keep = new bool[components.Count];
         keep[primaryIndex] = true;
         var maximumDetailDistance = Math.Clamp((int)Math.Round(Math.Min(width, height) * 0.004d), 5, 12);
@@ -376,9 +440,11 @@ public static class SubjectFocusProcessor
         for (var index = 0; index < labels.Length; index++)
         {
             var label = labels[index];
-            if (label >= 0 && components[label].Area >= minimumDetailArea &&
-                (distances[index] <= maximumDetailDistance ||
-                 faceEnvelope.Contains(components[label].Bounds.Center)))
+            if (label >= 0 &&
+                (components[label].Area >= minimumDetachedSubjectArea ||
+                 (components[label].Area >= minimumDetailArea &&
+                   (distances[index] <= maximumDetailDistance ||
+                    faceEnvelope.Contains(components[label].Bounds.Center)))))
             {
                 keep[label] = true;
             }

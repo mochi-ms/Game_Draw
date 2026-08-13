@@ -104,4 +104,9 @@ public sealed class TargetWindowBinding
             return true;
         }
     }
+
+    public bool IsForegroundNow()
+        => _geometryProvider is IForegroundWindowProbe probe
+            ? probe.IsForeground(Handle)
+            : Snapshot.IsForeground;
 }

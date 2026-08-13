@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using WinRT.Interop;
 using Windows.Graphics;
@@ -22,6 +23,8 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
 
+        AppTitleBar.Subtitle = $"설치 빌드 · {CurrentBuildVersion()}";
+
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
 
@@ -31,6 +34,21 @@ public sealed partial class MainWindow : Window
 
         // Navigate the root frame to the main page on startup.
         RootFrame.Navigate(typeof(MainPage));
+    }
+
+    private static string CurrentBuildVersion()
+    {
+        var assembly = typeof(MainWindow).Assembly;
+        var informational = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            var metadata = informational.IndexOf('+');
+            return metadata > 0 ? informational[..metadata] : informational;
+        }
+
+        return assembly.GetName().Version?.ToString() ?? "개발 빌드";
     }
 
     private void FitToCurrentDisplay()

@@ -19,7 +19,10 @@ public enum InputKey
     F8 = 5,
     A = 6,
     F5 = 7,
-    Delete = 8
+    Delete = 8,
+    Backspace = 9,
+    V = 10,
+    C = 11
 }
 
 public interface IInputController
@@ -51,4 +54,46 @@ public interface IInputSafetyController : IInputController
     ValueTask ReleaseAllButtonsAsync(CancellationToken cancellationToken = default);
 
     ValueTask ReleaseAllKeysAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Optional native recovery surface for targets that can keep an internal
+/// drag capture even after Windows has received a normal mouse-up event.
+/// Implementations must return with the target foreground and every mouse
+/// button released, or throw instead of allowing cursor travel to continue.
+/// </summary>
+public interface IPointerCaptureResetController : IInputSafetyController
+{
+    bool CanRepositionWithCaptureReset => true;
+
+    ValueTask ResetPointerCaptureAsync(
+        long targetWindowHandle,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves to a disconnected destination while the target cannot observe
+    /// pointer movement, then restores the target with every button released.
+    /// </summary>
+    async ValueTask RepositionWithCaptureResetAsync(
+        long targetWindowHandle,
+        ScreenPoint destination,
+        CancellationToken cancellationToken = default)
+    {
+        await ResetPointerCaptureAsync(targetWindowHandle, cancellationToken).ConfigureAwait(false);
+        await MoveToAsync(destination, cancellationToken).ConfigureAwait(false);
+    }
+}
+
+/// <summary>
+/// Optional input capability for controls that require a real clipboard paste
+/// rather than a stream of synthetic Unicode key events.
+/// </summary>
+public interface IClipboardInputController : IInputController
+{
+    ValueTask SetClipboardTextAsync(
+        string text,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<string?> GetClipboardTextAsync(
+        CancellationToken cancellationToken = default);
 }

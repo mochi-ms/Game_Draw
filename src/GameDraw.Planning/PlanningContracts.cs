@@ -1,4 +1,5 @@
 using GameDraw.Core.Drawing;
+using GameDraw.Core.Geometry;
 using GameDraw.Core.Models;
 using GameDraw.Imaging.Quantization;
 
@@ -20,6 +21,13 @@ public sealed record DrawingPlannerOptions
 
     public bool CloseContours { get; init; } = true;
 
+    /// <summary>
+    /// Optional subject-detail region. Layered planners keep the largest
+    /// silhouette first, then prioritize closed feature lines here before
+    /// completing the remaining underdrawing.
+    /// </summary>
+    public NormalizedRect? PriorityRegion { get; init; }
+
     public int FillRowStep { get; init; } = 1;
 
     public double MovementPixelsPerSecond { get; init; } = 500d;
@@ -30,11 +38,30 @@ public sealed record DrawingPlannerOptions
 
     public int PerStrokeSafetyDelayMilliseconds { get; init; }
 
+    /// <summary>
+    /// Estimated native/frame pacing paid by each additional authored point.
+    /// This is separate from geometric travel because frame-sampled games can
+    /// require time even when two points are only a few pixels apart.
+    /// </summary>
+    public double PerPointSafetyDelayMilliseconds { get; init; }
+
+    public bool IncludeInitialColorSelection { get; init; }
+
+    /// <summary>
+    /// Merge only physically tiny palette islands into a perceptually close
+    /// adjacent colour. Zero disables cleanup.
+    /// </summary>
+    public int MaximumTinyColorRegionPixels { get; init; }
+
+    public double MaximumTinyColorRegionDistance { get; init; }
+
     public double PenUpMovementMultiplier { get; init; } = 1d;
 
     public double StrokeSimplificationTolerancePixels { get; init; } = 0.9d;
 
     public double MinimumStrokeLengthPixels { get; init; } = 3d;
+
+    public int BrushDiameterPixels { get; init; } = 2;
 
     public void Validate()
     {
@@ -46,6 +73,11 @@ public sealed record DrawingPlannerOptions
         if (FillRowStep <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(FillRowStep));
+        }
+
+        if (PriorityRegion is { } priorityRegion && !priorityRegion.IsWithinUnitSquare)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PriorityRegion));
         }
 
         if (!double.IsFinite(MovementPixelsPerSecond) || MovementPixelsPerSecond <= 0d)
@@ -68,6 +100,21 @@ public sealed record DrawingPlannerOptions
             throw new ArgumentOutOfRangeException(nameof(PerStrokeSafetyDelayMilliseconds));
         }
 
+        if (!double.IsFinite(PerPointSafetyDelayMilliseconds) || PerPointSafetyDelayMilliseconds < 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PerPointSafetyDelayMilliseconds));
+        }
+
+        if (MaximumTinyColorRegionPixels is < 0 or > 64)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumTinyColorRegionPixels));
+        }
+
+        if (!double.IsFinite(MaximumTinyColorRegionDistance) || MaximumTinyColorRegionDistance < 0d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumTinyColorRegionDistance));
+        }
+
         if (!double.IsFinite(PenUpMovementMultiplier) || PenUpMovementMultiplier < 0d)
         {
             throw new ArgumentOutOfRangeException(nameof(PenUpMovementMultiplier));
@@ -81,6 +128,11 @@ public sealed record DrawingPlannerOptions
         if (!double.IsFinite(MinimumStrokeLengthPixels) || MinimumStrokeLengthPixels < 0d)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumStrokeLengthPixels));
+        }
+
+        if (BrushDiameterPixels is < 1 or > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(BrushDiameterPixels));
         }
     }
 }

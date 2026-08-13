@@ -123,6 +123,234 @@ public sealed class WindowsExecutionTests
         Assert.Equal(DrawingExecutionState.Completed, result.State);
         Assert.True(input.Moves.Count >= 11, $"Expected interpolated movement but received {input.Moves.Count} moves.");
         Assert.Equal(new ScreenPoint(100, 50), input.Moves[^1]);
+        Assert.True(provider.GeometryReads < input.Moves.Count);
+        Assert.True(provider.ForegroundReads >= input.Moves.Count);
+    }
+
+    [Fact]
+    public async Task ExecutorUsesReleasedOrCaptureResetPositioningBeforeEveryStampMove()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 101, 101, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+
+        var plan = new DrawingPlan(
+            DrawingMode.SafeStamp,
+            new PixelSize(3, 1),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0.1, 0.5) }),
+                    new DrawingStroke(new[] { new NormalizedPoint(0.5, 0.5) }),
+                    new DrawingStroke(new[] { new NormalizedPoint(0.9, 0.5) })
+                })
+            });
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            ColorChangeDelayMilliseconds = 0,
+            StrokeStartSettleMilliseconds = 0,
+            StrokeStartReleaseConfirmationCount = 2,
+            PenUpSettleMilliseconds = 5,
+            AdditionalPenUpConfirmationCount = 0,
+            MaximumContinuousPenDownDistancePixels = 512
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        var moveEvents = input.Events
+            .Select((item, index) => (item, index))
+            .Where(pair => pair.item.StartsWith("move:", StringComparison.Ordinal))
+            .ToArray();
+        Assert.Equal(plan.Statistics.StrokeCount, moveEvents.Length);
+        Assert.All(moveEvents, pair =>
+        {
+            Assert.True(pair.index > 0);
+            var boundary = input.Events[pair.index - 1];
+            Assert.True(
+                boundary == "atomic-up-move" || boundary.StartsWith("reset-pointer-capture:", StringComparison.Ordinal),
+                $"Move at event {pair.index} was not preceded by a released boundary: {boundary}");
+        });
+        Assert.Equal(plan.Statistics.StrokeCount - 1, input.PointerCaptureResetCalls);
+        Assert.True(input.Events.Count(item => item == "release-all-buttons") >= plan.Statistics.StrokeCount + 1);
+        Assert.Equal(plan.Statistics.StrokeCount, input.Events.Count(item => item == "up"));
+    }
+
+    [Fact]
+    public async Task ExecutorKeepsACompactRasterDetailDownAcrossACompleteFrame()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.SafeStamp,
+            new PixelSize(201, 201),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[]
+                    {
+                        new NormalizedPoint(0.50, 0.50),
+                        new NormalizedPoint(0.52, 0.50)
+                    })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            ColorChangeDelayMilliseconds = 0,
+            StrokeStartSettleMilliseconds = 0,
+            PenDownSettleMilliseconds = 0,
+            PenUpSettleMilliseconds = 0,
+            MinimumPenDownMilliseconds = 0,
+            MaximumMoveStepPixels = 64,
+            MaximumContinuousPenDownDistancePixels = 512
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.True(result.Duration >= TimeSpan.FromMilliseconds(35), $"Compact detail completed too quickly: {result.Duration}.");
+        var down = input.Events.IndexOf("down");
+        var detailMove = input.Events.FindIndex(down + 1, item => item.StartsWith("move:", StringComparison.Ordinal));
+        var up = input.Events.FindIndex(detailMove + 1, item => item == "up");
+        Assert.True(down >= 0 && detailMove > down && up > detailMove);
+    }
+
+    [Fact]
+    public async Task ExecutorResetsNativeCaptureBeforeEveryFarDisconnectedStroke()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.ArtistStroke,
+            new PixelSize(201, 201),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0.1, 0.1), new NormalizedPoint(0.2, 0.2) }),
+                    new DrawingStroke(new[] { new NormalizedPoint(0.8, 0.8), new NormalizedPoint(0.9, 0.9) })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            PenUpSettleMilliseconds = 0
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.Equal(1, input.PointerCaptureResetCalls);
+        var reset = input.Events.IndexOf("reset-pointer-capture:1234");
+        var secondMove = input.Events.FindIndex(reset + 1, item => item == "move:160,160");
+        Assert.True(reset >= 0 && secondMove > reset);
+        Assert.DoesNotContain("down", input.Events.Skip(reset + 1).Take(secondMove - reset - 1));
+    }
+
+    [Fact]
+    public async Task ArtistModeResetsCaptureBetweenNearbyDisconnectedLines()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.ArtistStroke,
+            new PixelSize(201, 201),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0.40, 0.40), new NormalizedPoint(0.45, 0.40) }),
+                    new DrawingStroke(new[] { new NormalizedPoint(0.46, 0.42), new NormalizedPoint(0.51, 0.42) })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            PenUpSettleMilliseconds = 0
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.Equal(1, input.PointerCaptureResetCalls);
+        Assert.Equal(1, input.AtomicPositioningCalls);
+    }
+
+    [Fact]
+    public async Task SafeStampModeResetsCaptureBetweenNearbyDisconnectedStrokes()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.SafeStamp,
+            new PixelSize(201, 201),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0.40, 0.40) }),
+                    new DrawingStroke(new[] { new NormalizedPoint(0.45, 0.40) })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            PenUpSettleMilliseconds = 0
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.Equal(1, input.PointerCaptureResetCalls);
+        Assert.Equal(1, input.AtomicPositioningCalls);
+        Assert.True(input.ReleaseAllButtonCalls >= plan.Statistics.StrokeCount * 2);
+        Assert.Empty(input.PressedButtons);
+    }
+
+    [Fact]
+    public async Task ExecutorBreaksLongPenDownAtTheSameCoordinate()
+    {
+        var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 101, 101, 96));
+        var binding = new TargetWindowBinding(provider.Current, provider);
+        var input = new RecordingInputController();
+        using var executor = new WindowsDrawingExecutor(input, binding, new SafeVerifier());
+        var plan = new DrawingPlan(
+            DrawingMode.ArtistStroke,
+            new PixelSize(101, 101),
+            new[]
+            {
+                new DrawingColorGroup(RgbColor.Black, new[]
+                {
+                    new DrawingStroke(new[] { new NormalizedPoint(0, 0.5), new NormalizedPoint(1, 0.5) })
+                })
+            });
+
+        var result = await executor.ExecuteAsync(plan, new DrawingExecutionOptions
+        {
+            SpeedMultiplier = 100_000,
+            InterStrokeDelayMilliseconds = 0,
+            ColorChangeDelayMilliseconds = 0,
+            MaximumMoveStepPixels = 5,
+            MaximumContinuousPenDownDistancePixels = 20,
+            PenUpSettleMilliseconds = 0
+        });
+
+        Assert.Equal(DrawingExecutionState.Completed, result.State);
+        Assert.True(input.Events.Count(item => item == "down") >= 4);
+        Assert.True(input.Events.Count(item => item == "up") >= 6);
+        Assert.Equal(new ScreenPoint(100, 50), input.Moves[^1]);
     }
 
     [Fact]
@@ -328,6 +556,7 @@ public sealed class WindowsExecutionTests
         Assert.Equal(DrawingExecutionState.Completed, result.State);
         Assert.Equal(1, hooks.BeforePlanCalls);
         Assert.Equal(new[] { RgbColor.Black, RgbColor.White }, hooks.Colors);
+        Assert.Equal(2, hooks.BeforeStrokeCalls);
     }
 
     [Fact]
@@ -404,6 +633,8 @@ public sealed class WindowsExecutionTests
 
         public List<RgbColor> Colors { get; } = new();
 
+        public int BeforeStrokeCalls { get; private set; }
+
         public ValueTask BeforePlanAsync(DrawingPlan plan, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -417,17 +648,38 @@ public sealed class WindowsExecutionTests
             Colors.Add(color);
             return ValueTask.CompletedTask;
         }
+
+        public ValueTask BeforeStrokeAsync(
+            DrawingStroke stroke,
+            int strokeIndex,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeforeStrokeCalls++;
+            return ValueTask.CompletedTask;
+        }
     }
 
-    private sealed class FakeGeometryProvider(TargetWindowGeometry initial) : IWindowGeometryProvider
+    private sealed class FakeGeometryProvider(TargetWindowGeometry initial) : IWindowGeometryProvider, IForegroundWindowProbe
     {
         public TargetWindowGeometry Current { get; set; } = initial;
+
+        public int GeometryReads { get; private set; }
+
+        public int ForegroundReads { get; private set; }
+
+        public bool IsForeground(long handle)
+        {
+            ForegroundReads++;
+            return Current.Snapshot.Handle == handle && Current.Snapshot.IsForeground;
+        }
 
         public ValueTask<TargetWindowGeometry?> GetGeometryAsync(
             long handle,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            GeometryReads++;
             return ValueTask.FromResult<TargetWindowGeometry?>(Current);
         }
     }
@@ -444,11 +696,25 @@ public sealed class WindowsExecutionTests
 
         public int ReleaseAllButtonCalls { get; private set; }
 
+        public int AtomicPositioningCalls { get; private set; }
+
+        public int PointerCaptureResetCalls { get; private set; }
+
         public async ValueTask MoveToAsync(ScreenPoint point, CancellationToken cancellationToken = default)
         {
             await DelayAsync(cancellationToken);
             Moves.Add(point);
             Events.Add($"move:{point.X},{point.Y}");
+        }
+
+        public async ValueTask MoveWithButtonsReleasedAsync(
+            ScreenPoint point,
+            CancellationToken cancellationToken = default)
+        {
+            await ReleaseAllButtonsAsync(cancellationToken);
+            AtomicPositioningCalls++;
+            Events.Add("atomic-up-move");
+            await MoveToAsync(point, cancellationToken);
         }
 
         public async ValueTask MouseDownAsync(InputMouseButton button = InputMouseButton.Left, CancellationToken cancellationToken = default)
@@ -494,6 +760,17 @@ public sealed class WindowsExecutionTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             Events.Add("release-all-keys");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask ResetPointerCaptureAsync(
+            long targetWindowHandle,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            PointerCaptureResetCalls++;
+            Events.Add($"reset-pointer-capture:{targetWindowHandle}");
+            PressedButtons.Clear();
             return ValueTask.CompletedTask;
         }
 

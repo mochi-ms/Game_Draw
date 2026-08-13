@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="GameDraw_App.ManualCropEditor"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid RowSpacing="12" MinWidth="620">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border
+            Height="430"
+            Background="{ThemeResource PreviewSurfaceBrush}"
+            BorderBrush="{ThemeResource CardBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="20">
+            <Grid x:Name="Surface" SizeChanged="Surface_SizeChanged">
+                <Image x:Name="SourceImage" Stretch="Uniform" ImageOpened="SourceImage_ImageOpened" />
+                <Canvas
+                    x:Name="Overlay"
+                    Background="Transparent"
+                    PointerPressed="Overlay_PointerPressed"
+                    PointerMoved="Overlay_PointerMoved"
+                    PointerReleased="Overlay_PointerReleased"
+                    PointerCanceled="Overlay_PointerCanceled">
+                    <Rectangle
+                        x:Name="SelectionRectangle"
+                        Fill="#1F4C8DFF"
+                        Stroke="#FF4C8DFF"
+                        StrokeThickness="3" />
+                </Canvas>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="남길 영역을 이미지 위에서 드래그하세요." FontWeight="SemiBold" />
+                <TextBlock x:Name="CropStatus" Style="{ThemeResource MutedTextBlockStyle}" />
+            </StackPanel>
+            <Button Grid.Column="1" Click="Reset_Click" Content="전체 이미지" Padding="14,8" />
+        </Grid>
+    </Grid>
+</UserControl>

@@ -34,7 +34,11 @@ public sealed class CanvasSelectionWindow : Window
     private bool _completing;
     private bool _closed;
 
-    public CanvasSelectionWindow(string presetLabel, double? aspectRatio)
+    public CanvasSelectionWindow(
+        string presetLabel,
+        double? aspectRatio,
+        string? heading = null,
+        string? detail = null)
     {
         Title = "GameDraw 캔버스 영역 선택";
         _aspectRatio = aspectRatio.HasValue && aspectRatio.Value > 0d && double.IsFinite(aspectRatio.Value)
@@ -78,14 +82,14 @@ public sealed class CanvasSelectionWindow : Window
         var instructions = new StackPanel { Spacing = 3 };
         instructions.Children.Add(new TextBlock
         {
-            Text = "흰색 그림 영역을 드래그하세요",
+            Text = heading ?? "흰색 그림 영역을 드래그하세요",
             Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
             FontSize = 18,
             FontWeight = FontWeights.SemiBold
         });
         instructions.Children.Add(new TextBlock
         {
-            Text = $"비율: {presetLabel} · 마우스를 놓으면 바로 저장됩니다.",
+            Text = detail ?? $"비율: {presetLabel} · 마우스를 놓으면 바로 저장됩니다.",
             Foreground = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(220, 226, 232, 240)),
             FontSize = 13
         });

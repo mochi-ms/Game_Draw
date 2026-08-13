@@ -6,9 +6,11 @@ using GameDraw.Core.Targeting;
 namespace GameDraw.Automation.Windows.Capture;
 
 /// <summary>
-/// Captures the current client area through BitBlt. The implementation is
-/// guarded for non-Windows hosts so recognition tests can use synthetic frames
-/// without loading user32/gdi32.
+/// Captures the visible, desktop-composited client area through BitBlt. Using
+/// the desktop DC is important for Direct3D games: GetDC(hwnd) can return a
+/// stale backing surface even though newly drawn pixels are visible onscreen.
+/// The implementation is guarded for non-Windows hosts so recognition tests
+/// can use synthetic frames without loading user32/gdi32.
 /// </summary>
 public sealed class WindowsWindowCapture : ITargetWindowCapture
 {
@@ -43,7 +45,14 @@ public sealed class WindowsWindowCapture : ITargetWindowCapture
             return null;
         }
 
-        var sourceDc = NativeMethods.GetDC(hwnd);
+        var clientOrigin = new NativeMethods.POINT();
+        if (!NativeMethods.ClientToScreen(hwnd, ref clientOrigin))
+        {
+            return null;
+        }
+
+        var desktopWindow = nint.Zero;
+        var sourceDc = NativeMethods.GetDC(desktopWindow);
         if (sourceDc == nint.Zero)
         {
             return null;
@@ -70,8 +79,8 @@ public sealed class WindowsWindowCapture : ITargetWindowCapture
                     width,
                     height,
                     sourceDc,
-                    0,
-                    0,
+                    clientOrigin.X,
+                    clientOrigin.Y,
                     NativeMethods.RasterOperation.SourceCopy | NativeMethods.RasterOperation.CaptureBlt))
             {
                 return null;
@@ -134,7 +143,7 @@ public sealed class WindowsWindowCapture : ITargetWindowCapture
                 NativeMethods.DeleteDC(memoryDc);
             }
 
-            _ = NativeMethods.ReleaseDC(hwnd, sourceDc);
+            _ = NativeMethods.ReleaseDC(desktopWindow, sourceDc);
         }
     }
 
@@ -152,6 +161,10 @@ public sealed class WindowsWindowCapture : ITargetWindowCapture
 
         [DllImport("user32.dll")]
         internal static extern int ReleaseDC(nint windowHandle, nint deviceContext);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ClientToScreen(nint windowHandle, ref POINT point);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -204,6 +217,13 @@ public sealed class WindowsWindowCapture : ITargetWindowCapture
             public int Top;
             public int Right;
             public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct POINT
+        {
+            public int X;
+            public int Y;
         }
 
         [StructLayout(LayoutKind.Sequential)]

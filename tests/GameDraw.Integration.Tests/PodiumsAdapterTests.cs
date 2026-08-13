@@ -20,9 +20,12 @@ public sealed class PodiumsAdapterTests
         Assert.Equal("podiums.roblox", adapter.Id);
         Assert.Equal(ColorAdapterKind.HexInput, profile.ColorAdapter.Kind);
         Assert.True(profile.ColorAdapter.SupportsExactColor);
-        Assert.Equal(9, profile.SupportedModes.Count);
+        Assert.Equal(12, profile.SupportedModes.Count);
         Assert.Contains(GameDraw.Core.Models.DrawingMode.CleanStroke, profile.SupportedModes);
         Assert.Contains(GameDraw.Core.Models.DrawingMode.ArtistStroke, profile.SupportedModes);
+        Assert.Contains(GameDraw.Core.Models.DrawingMode.SafeStamp, profile.SupportedModes);
+        Assert.Contains(GameDraw.Core.Models.DrawingMode.HalftoneStamp, profile.SupportedModes);
+        Assert.Contains(GameDraw.Core.Models.DrawingMode.SmartFill, profile.SupportedModes);
         Assert.False(PodiumsProfileSettings.ReadControlLayout(profile).IsConfigured);
         Assert.NotEmpty(profile.Validate().Warnings);
     }
@@ -136,16 +139,38 @@ public sealed class PodiumsAdapterTests
         var result = await adapter.SelectColorAsync(new RgbColor(0x12, 0x34, 0x56), profile, context);
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal("#123456", Assert.Single(input.TypedText));
-        Assert.Equal(new ScreenPoint(120, 140), input.Clicks[0]);
-        Assert.Single(input.Clicks);
+        Assert.Equal("#123456", input.ClipboardText);
+        Assert.All(input.Clicks, point => Assert.Equal(new ScreenPoint(120, 140), point));
+        Assert.Equal(2, input.Clicks.Count);
         Assert.Contains("key-down:Control", input.Events);
         Assert.Contains("key-up:A", input.Events);
         Assert.Contains("key-down:Delete", input.Events);
+        Assert.Contains("key-down:Backspace", input.Events);
+        Assert.Contains("#123456", input.TypedText);
         Assert.Contains("key-down:Enter", input.Events);
         Assert.True(input.Events.IndexOf("key-up:A") < input.Events.IndexOf("key-down:Delete"));
         Assert.True(input.Events.IndexOf("key-down:Delete") < input.Events.IndexOf("key-down:Enter"));
+        Assert.True(input.ReleaseAllButtonsCalls >= 5);
         Assert.True(input.ReleaseAllKeysCalls > 0);
+    }
+
+    [Fact]
+    public async Task HexAdapterStopsAfterTwoAttemptsWhenFieldReadbackDoesNotMatch()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController { IgnorePaste = true, IgnoreTextInput = true };
+        var adapter = new PodiumsColorAdapter();
+
+        var result = await adapter.SelectColorAsync(
+            new RgbColor(0x12, 0x34, 0x56),
+            profile,
+            CreateContext(input));
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(8, input.Clicks.Count);
+        Assert.Contains("key-down:C", input.Events);
+        Assert.DoesNotContain("key-down:Escape", input.Events);
+        Assert.True(input.ReleaseAllButtonsCalls > 0);
     }
 
     [Fact]
@@ -170,6 +195,23 @@ public sealed class PodiumsAdapterTests
     }
 
     [Fact]
+    public async Task ToolAdapterFallsBackToReleasedClickWhenNoFocusSinkExists()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController { CanRepositionWithCaptureReset = false };
+
+        var result = await new PodiumsToolAdapter().SelectToolAsync(
+            PodiumsToolKind.Pencil,
+            profile,
+            CreateContext(input));
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains(new ScreenPoint(170, 110), input.Clicks);
+        Assert.DoesNotContain("reset-pointer-capture:123", input.Events);
+        Assert.True(input.ReleaseAllButtonsCalls > 0);
+    }
+
+    [Fact]
     public async Task ExecutionHooksKeepCurrentToolAndBrushThenChangeOnlyRequestedColor()
     {
         var profile = CreateConfiguredProfile();
@@ -190,7 +232,78 @@ public sealed class PodiumsAdapterTests
 
         Assert.DoesNotContain(new ScreenPoint(170, 110), input.Clicks);
         Assert.DoesNotContain(input.Clicks, point => point.X == 180 && point.Y is >= 120 and <= 180);
-        Assert.Contains("#AABBCC", input.TypedText);
+        Assert.Contains("reset-pointer-capture:123", input.Events);
+        Assert.Contains("move:120,140", input.Events);
+        Assert.True(input.Events.IndexOf("reset-pointer-capture:123") < input.Events.IndexOf("move:120,140"));
+        Assert.True(input.Events.IndexOf("move:120,140") < input.Events.IndexOf("click:120,140"));
+        Assert.Equal("#AABBCC", input.ClipboardText);
+    }
+
+    [Fact]
+    public async Task SafeColorTransitionUsesNativeCaptureResetBeforeHexTravel()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController();
+        var hooks = new PodiumsExecutionHooks(profile, CreateContext(input));
+        var plan = new GameDraw.Core.Drawing.DrawingPlan(
+            GameDraw.Core.Models.DrawingMode.SafeStamp,
+            new PixelSize(2, 1),
+            new[]
+            {
+                new GameDraw.Core.Drawing.DrawingColorGroup(
+                    RgbColor.Black,
+                    new[] { new GameDraw.Core.Drawing.DrawingStroke(new[] { new NormalizedPoint(0.25, 0.5) }) }),
+                new GameDraw.Core.Drawing.DrawingColorGroup(
+                    RgbColor.White,
+                    new[] { new GameDraw.Core.Drawing.DrawingStroke(new[] { new NormalizedPoint(0.75, 0.5) }) })
+            });
+
+        await hooks.BeforePlanAsync(plan);
+        await hooks.BeforeColorGroupAsync(RgbColor.Black, 0);
+        var firstColorEnd = input.Events.Count;
+        await hooks.BeforeColorGroupAsync(RgbColor.White, 1);
+
+        var transition = input.Events.Skip(firstColorEnd).ToArray();
+        Assert.Contains("reset-pointer-capture:123", transition);
+        Assert.Contains("move:120,140", transition);
+        Assert.Contains("mouse-down:Left", transition);
+        Assert.Contains("mouse-up:Left", transition);
+        Assert.True(Array.IndexOf(transition, "mouse-down:Left") <
+                    Array.IndexOf(transition, "mouse-up:Left"));
+        Assert.True(Array.IndexOf(transition, "mouse-up:Left") <
+                    Array.IndexOf(transition, "reset-pointer-capture:123"));
+        Assert.True(Array.IndexOf(transition, "reset-pointer-capture:123") <
+                    Array.IndexOf(transition, "move:120,140"));
+        Assert.True(Array.IndexOf(transition, "move:120,140") <
+                    Array.FindIndex(transition, item => item.StartsWith("click:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task SmartFillHooksSelectPencilThenSwitchToPaintBucketOnlyForFillActions()
+    {
+        var profile = CreateConfiguredProfile();
+        var input = new RecordingInputController();
+        var hooks = new PodiumsExecutionHooks(profile, CreateContext(input));
+        var outline = new GameDraw.Core.Drawing.DrawingStroke(new[]
+        {
+            new NormalizedPoint(0.2, 0.2),
+            new NormalizedPoint(0.8, 0.2),
+            new NormalizedPoint(0.8, 0.8)
+        }, isClosed: true);
+        var fill = new GameDraw.Core.Drawing.DrawingStroke(
+            new[] { new NormalizedPoint(0.5, 0.5) },
+            toolAction: GameDraw.Core.Drawing.DrawingToolAction.Fill);
+        var plan = new GameDraw.Core.Drawing.DrawingPlan(
+            GameDraw.Core.Models.DrawingMode.SmartFill,
+            new PixelSize(10, 10),
+            new[] { new GameDraw.Core.Drawing.DrawingColorGroup(RgbColor.Black, new[] { outline, fill }) });
+
+        await hooks.BeforePlanAsync(plan);
+        await hooks.BeforeStrokeAsync(outline, 0);
+        await hooks.BeforeStrokeAsync(fill, 1);
+
+        Assert.Equal(1, input.Clicks.Count(point => point == new ScreenPoint(170, 110)));
+        Assert.Equal(1, input.Clicks.Count(point => point == new ScreenPoint(190, 110)));
     }
 
     [Fact]
@@ -265,13 +378,26 @@ public sealed class PodiumsAdapterTests
                 100 + (int)Math.Round(point.X * 100, MidpointRounding.AwayFromZero),
                 100 + (int)Math.Round(point.Y * 100, MidpointRounding.AwayFromZero)));
 
-    private sealed class RecordingInputController : IInputSafetyController
+    private sealed class RecordingInputController : IPointerCaptureResetController, IClipboardInputController
     {
+        private bool _controlDown;
+        private string? _focusedFieldText;
+
         public List<string> Events { get; } = new();
 
         public List<ScreenPoint> Clicks { get; } = new();
 
         public List<string> TypedText { get; } = new();
+
+        public string? ClipboardText { get; private set; }
+
+        public bool IgnorePaste { get; init; }
+
+        public bool IgnoreTextInput { get; init; }
+
+        public bool CanRepositionWithCaptureReset { get; init; } = true;
+
+        public int ReleaseAllButtonsCalls { get; private set; }
 
         public int ReleaseAllKeysCalls { get; private set; }
 
@@ -303,28 +429,73 @@ public sealed class PodiumsAdapterTests
         public ValueTask KeyDownAsync(InputKey key, CancellationToken cancellationToken = default)
         {
             Events.Add($"key-down:{key}");
+            if (key == InputKey.Control)
+            {
+                _controlDown = true;
+            }
+            else if (_controlDown && key == InputKey.V && !IgnorePaste)
+            {
+                _focusedFieldText = ClipboardText;
+            }
+            else if (_controlDown && key == InputKey.C)
+            {
+                ClipboardText = _focusedFieldText;
+            }
             return ValueTask.CompletedTask;
         }
 
         public ValueTask KeyUpAsync(InputKey key, CancellationToken cancellationToken = default)
         {
             Events.Add($"key-up:{key}");
+            if (key == InputKey.Control)
+            {
+                _controlDown = false;
+            }
             return ValueTask.CompletedTask;
         }
 
         public ValueTask TypeTextAsync(string text, CancellationToken cancellationToken = default)
         {
             TypedText.Add(text);
+            if (!IgnoreTextInput)
+            {
+                _focusedFieldText = text;
+            }
             return ValueTask.CompletedTask;
         }
 
+        public ValueTask SetClipboardTextAsync(string text, CancellationToken cancellationToken = default)
+        {
+            ClipboardText = text;
+            Events.Add($"clipboard:{text}");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<string?> GetClipboardTextAsync(CancellationToken cancellationToken = default)
+        {
+            Events.Add($"clipboard-read:{ClipboardText}");
+            return ValueTask.FromResult(ClipboardText);
+        }
+
         public ValueTask ReleaseAllButtonsAsync(CancellationToken cancellationToken = default)
-            => ValueTask.CompletedTask;
+        {
+            ReleaseAllButtonsCalls++;
+            Events.Add("release-all-buttons");
+            return ValueTask.CompletedTask;
+        }
 
         public ValueTask ReleaseAllKeysAsync(CancellationToken cancellationToken = default)
         {
             ReleaseAllKeysCalls++;
             Events.Add("release-all-keys");
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask ResetPointerCaptureAsync(
+            long targetWindowHandle,
+            CancellationToken cancellationToken = default)
+        {
+            Events.Add($"reset-pointer-capture:{targetWindowHandle}");
             return ValueTask.CompletedTask;
         }
     }

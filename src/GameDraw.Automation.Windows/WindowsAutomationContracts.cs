@@ -24,6 +24,16 @@ public interface IWindowGeometryProvider
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Lightweight foreground check used between mouse events. Reading full
+/// window geometry, title, process, and DPI for every path point is both
+/// unnecessary and a major execution bottleneck.
+/// </summary>
+public interface IForegroundWindowProbe
+{
+    bool IsForeground(long handle);
+}
+
 public interface ICursorPositionProvider
 {
     bool TryGetScreenPosition(out ScreenPoint point);
@@ -47,8 +57,20 @@ public sealed record CapturedWindowFrame(
     DateTimeOffset CapturedAt,
     ReadOnlyMemory<byte> BgraPixels);
 
-public interface IWindowsInputController : IInputSafetyController
+public interface IWindowsInputController : IPointerCaptureResetController
 {
+    /// <summary>
+    /// Releases every mouse button and moves in one ordered native input
+    /// batch. Game canvases must observe the release before the positioning
+    /// move, even when both are consumed in the same rendered frame.
+    /// </summary>
+    async ValueTask MoveWithButtonsReleasedAsync(
+        ScreenPoint point,
+        CancellationToken cancellationToken = default)
+    {
+        await ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+        await MoveToAsync(point, cancellationToken).ConfigureAwait(false);
+    }
 }
 
 public interface IWindowsHotkeyService
