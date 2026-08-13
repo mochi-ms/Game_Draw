@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using GameDraw.Automation.Windows;
 using GameDraw.Automation.Windows.Hotkeys;
@@ -48,6 +47,7 @@ public sealed partial class MainPage : Page, IDisposable
     private PodiumsCalibrationSession? _calibration;
     private TargetWindowSnapshot? _calibrationTarget;
     private PreparedDrawing? _preparedDrawing;
+    private NormalizedRect? _manualCrop;
     private CancellationTokenSource? _executionCancellation;
     private CancellationTokenSource? _preparationCancellation;
     private ExecutionPanelWindow? _executionWindow;
@@ -61,24 +61,8 @@ public sealed partial class MainPage : Page, IDisposable
     public MainPage()
     {
         InitializeComponent();
-        BuildVersionText.Text = $"설치 빌드 · {CurrentBuildVersion()}";
         RecordingLibraryPage.BackRequested += RecordingLibraryPage_BackRequested;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
-    }
-
-    private static string CurrentBuildVersion()
-    {
-        var assembly = typeof(MainPage).Assembly;
-        var informational = assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion;
-        if (!string.IsNullOrWhiteSpace(informational))
-        {
-            var metadata = informational.IndexOf('+');
-            return metadata > 0 ? informational[..metadata] : informational;
-        }
-
-        return assembly.GetName().Version?.ToString() ?? "개발 빌드";
     }
 
     private async void Page_Loaded(object sender, RoutedEventArgs e)
@@ -407,6 +391,7 @@ public sealed partial class MainPage : Page, IDisposable
             StatusBanner.Visibility = Visibility.Collapsed;
             RecordingLibraryPage.Visibility = Visibility.Visible;
             RecordingLibraryButton.Content = "그리기로 돌아가기";
+            HeaderTitle.Text = "영상 기록";
             HeaderSubtitle.Text = "자동 그리기 영상과 완성 썸네일을 재생하고 관리하세요.";
             await RecordingLibraryPage.OpenAsync();
         }
@@ -432,6 +417,7 @@ public sealed partial class MainPage : Page, IDisposable
         StatusBanner.Visibility = Visibility.Visible;
         _recordingPageVisible = false;
         RecordingLibraryButton.Content = ActualWidth < 900d ? "기록" : "영상 기록";
+        HeaderTitle.Text = "그리기";
         HeaderSubtitle.Text = "이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요.";
     }
 
@@ -463,6 +449,8 @@ public sealed partial class MainPage : Page, IDisposable
     private void CompleteWorkspaceReset()
     {
         _preparedDrawing = null;
+        _manualCrop = null;
+        CropStatusText.Text = "직접 자르기를 사용하면 선택한 영역 안에서 배경을 다시 분석합니다.";
         _executionWindow?.Hide();
         PreviewImage.Source = null;
         PreviewImage.Visibility = Visibility.Collapsed;
@@ -487,6 +475,8 @@ public sealed partial class MainPage : Page, IDisposable
 
             ViewModel.SetImage(path);
             _preparedDrawing = null;
+            _manualCrop = null;
+            CropStatusText.Text = "직접 자르기를 사용하면 선택한 영역 안에서 배경을 다시 분석합니다.";
 
             var bitmap = new BitmapImage
             {
@@ -518,6 +508,41 @@ public sealed partial class MainPage : Page, IDisposable
 
     private async void ProfileSetup_Click(object sender, RoutedEventArgs e)
         => await BeginProfileSetupAsync();
+
+    private async void ManualCrop_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.HasImage || string.IsNullOrWhiteSpace(ViewModel.SelectedImagePath) || ViewModel.IsBusy)
+        {
+            return;
+        }
+
+        var editor = new ManualCropEditor(ViewModel.SelectedImagePath, _manualCrop);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "직접 자르기",
+            Content = editor,
+            PrimaryButtonText = "이 영역 사용",
+            SecondaryButtonText = "전체 이미지로 복원",
+            CloseButtonText = "취소",
+            DefaultButton = ContentDialogButton.Primary
+        };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None)
+        {
+            return;
+        }
+
+        _manualCrop = result == ContentDialogResult.Secondary
+            ? null
+            : editor.CurrentCrop;
+        _preparedDrawing = null;
+        CropStatusText.Text = _manualCrop is { } crop
+            ? $"직접 자르기 적용 · 가로 {crop.Width:P0} · 세로 {crop.Height:P0}"
+            : "전체 이미지를 사용합니다. 배경 제거 시 피사체 영역을 자동 분석합니다.";
+        ViewModel.PlanSummary = "자르기 영역이 변경되었습니다. 이미지를 다시 분석하세요.";
+        ViewModel.Stage = WorkspaceStage.Configure;
+    }
 
     private async void ToolSetup_Click(object sender, RoutedEventArgs e)
         => await BeginToolSetupAsync();
@@ -886,6 +911,7 @@ public sealed partial class MainPage : Page, IDisposable
                 SelectedQuality(),
                 SelectedSpeedMultiplier(),
                 ViewModel.SmartSubjectEnabled,
+                _manualCrop,
                 status,
                 preparationCancellation.Token);
             ShowProcessedPreview(_preparedDrawing.PlanPreview);
@@ -1115,6 +1141,8 @@ public sealed partial class MainPage : Page, IDisposable
         if (e.PropertyName == nameof(MainPageViewModel.SelectedImagePath)
             && string.IsNullOrWhiteSpace(ViewModel.SelectedImagePath))
         {
+            _manualCrop = null;
+            CropStatusText.Text = "직접 자르기를 사용하면 선택한 영역 안에서 배경을 다시 분석합니다.";
             PreviewImage.Source = null;
             FloatingPreviewImage.Source = null;
             PreviewImage.Visibility = Visibility.Collapsed;
@@ -1137,29 +1165,29 @@ public sealed partial class MainPage : Page, IDisposable
 
         ViewModel.SetLayoutWidth(width);
         var mode = ViewModel.LayoutMode;
-        var showStepRail = width >= 1180;
+        var showStepRail = width >= 1460;
         var shortHeight = height < 760;
         StepRail.Visibility = showStepRail ? Visibility.Visible : Visibility.Collapsed;
         WorkspaceLayout.ColumnDefinitions[0].Width = showStepRail
-            ? new GridLength(mode == ResponsiveLayoutMode.Expanded ? 230 : 205)
+            ? new GridLength(mode == ResponsiveLayoutMode.Expanded ? 225 : 205)
             : new GridLength(0);
         WorkspaceLayout.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
         WorkspaceLayout.ColumnDefinitions[2].Width = new GridLength(width switch
         {
-            >= 1350 => 370,
-            >= 980 => 350,
+            >= 1450 => 390,
+            >= 980 => 365,
             >= 720 => 340,
             _ => Math.Clamp(width * 0.47d, 280d, 330d)
         });
         RootLayout.Padding = mode switch
         {
-            ResponsiveLayoutMode.Expanded => new Thickness(24, 18, 24, 22),
-            ResponsiveLayoutMode.Medium => new Thickness(18, 14, 18, 18),
+            ResponsiveLayoutMode.Expanded => new Thickness(30, 22, 30, 28),
+            ResponsiveLayoutMode.Medium => new Thickness(20, 16, 20, 20),
             _ => new Thickness(12)
         };
-        RootLayout.RowSpacing = shortHeight ? 8 : 12;
-        WorkspaceLayout.ColumnSpacing = shortHeight ? 8 : 12;
-        PreviewCard.Padding = shortHeight ? new Thickness(12) : new Thickness(18);
+        RootLayout.RowSpacing = shortHeight ? 10 : 16;
+        WorkspaceLayout.ColumnSpacing = shortHeight ? 10 : 16;
+        PreviewCard.Padding = shortHeight ? new Thickness(14) : new Thickness(22);
         HeaderSubtitle.Visibility = shortHeight || width < 980 ? Visibility.Collapsed : Visibility.Visible;
         StepRailHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;
         SafetyHint.Visibility = shortHeight ? Visibility.Collapsed : Visibility.Visible;

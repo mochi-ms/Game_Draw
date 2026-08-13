@@ -55,10 +55,12 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        Window = new MainWindow();
         DrawingSession = new DrawingSessionController();
         RecordingLibrary = new RecordingLibraryService();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        // MainWindow immediately creates MainPage and its recording-library view.
+        // Services must therefore exist before the visual tree is constructed.
+        Window = new MainWindow();
         Window.Closed += (_, _) =>
         {
             DrawingSession.Dispose();

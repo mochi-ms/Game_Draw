@@ -380,4 +380,36 @@ public sealed class ImagingPipelineTests
         Assert.True(result.BackgroundRemoved);
         Assert.True(result.Frame.Pixels.Count(pixel => pixel.IsOpaque && pixel.Color == jacket) >= 200);
     }
+
+    [Fact]
+    public void SmartSubjectFollowsSoftBorderGradientWithoutCrossingSubjectEdge()
+    {
+        const int width = 48;
+        const int height = 36;
+        var pixels = new RgbaPixel[width * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var borderDistance = Math.Min(Math.Min(x, width - 1 - x), Math.Min(y, height - 1 - y));
+                var value = (byte)Math.Max(210, 246 - (borderDistance * 3));
+                pixels[(y * width) + x] = RgbaPixel.Opaque(new RgbColor(value, value, value));
+            }
+        }
+
+        var subject = new RgbColor(38, 92, 174);
+        for (var y = 8; y <= 30; y++)
+        {
+            for (var x = 16; x <= 31; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(subject);
+            }
+        }
+
+        var result = SubjectFocusProcessor.Process(new CoreImageFrame(width, height, pixels));
+
+        Assert.True(result.BackgroundRemoved);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsOpaque && pixel.Color == subject);
+        Assert.Contains(result.Frame.Pixels, pixel => pixel.IsTransparent);
+    }
 }

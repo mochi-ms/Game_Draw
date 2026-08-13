@@ -4,17 +4,17 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F7F8FA" />
+            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F4F5F7" />
             <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E7EB" />
-            <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB" />
-            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#EEF4FF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#E6E8EC" />
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#0B73E0" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#EAF3FF" />
             <SolidColorBrush x:Key="AccentBrush" Color="#059669" />
             <SolidColorBrush x:Key="DangerSoftBrush" Color="#FEF2F2" />
             <SolidColorBrush x:Key="DangerTextBrush" Color="#B42318" />
             <SolidColorBrush x:Key="MutedTextBrush" Color="#667085" />
             <SolidColorBrush x:Key="StrongTextBrush" Color="#101828" />
-            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#F9FAFB" />
+            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#F6F7F9" />
             <SolidColorBrush x:Key="PlayerSurfaceBrush" Color="#111827" />
             <SolidColorBrush x:Key="RecordRowBrush" Color="#FCFCFD" />
             <SolidColorBrush x:Key="OverlayBrush" Color="#BFFFFFFF" />
@@ -22,35 +22,35 @@
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#0F1115" />
-            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#181B21" />
-            <SolidColorBrush x:Key="CardBorderBrush" Color="#2B303A" />
-            <SolidColorBrush x:Key="PrimaryBrush" Color="#8DB3FF" />
-            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#202C47" />
+            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#101114" />
+            <SolidColorBrush x:Key="CardBackgroundBrush" Color="#1B1C20" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#2A2C32" />
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#7EB8FF" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#1C304A" />
             <SolidColorBrush x:Key="AccentBrush" Color="#5DDBA7" />
             <SolidColorBrush x:Key="DangerSoftBrush" Color="#402329" />
             <SolidColorBrush x:Key="DangerTextBrush" Color="#FDA4AF" />
             <SolidColorBrush x:Key="MutedTextBrush" Color="#A7AFBF" />
             <SolidColorBrush x:Key="StrongTextBrush" Color="#F5F7FA" />
-            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#12151A" />
+            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#141519" />
             <SolidColorBrush x:Key="PlayerSurfaceBrush" Color="#080A0D" />
-            <SolidColorBrush x:Key="RecordRowBrush" Color="#1C2027" />
+            <SolidColorBrush x:Key="RecordRowBrush" Color="#202126" />
             <SolidColorBrush x:Key="OverlayBrush" Color="#DA0F1115" />
             <SolidColorBrush x:Key="OnPrimaryBrush" Color="#0F1115" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F7F8FA" />
+            <SolidColorBrush x:Key="PageBackgroundBrush" Color="#F4F5F7" />
             <SolidColorBrush x:Key="CardBackgroundBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E7EB" />
-            <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB" />
-            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#EEF4FF" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#E6E8EC" />
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#0B73E0" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#EAF3FF" />
             <SolidColorBrush x:Key="AccentBrush" Color="#059669" />
             <SolidColorBrush x:Key="DangerSoftBrush" Color="#FEF2F2" />
             <SolidColorBrush x:Key="DangerTextBrush" Color="#B42318" />
             <SolidColorBrush x:Key="MutedTextBrush" Color="#667085" />
             <SolidColorBrush x:Key="StrongTextBrush" Color="#101828" />
-            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#F9FAFB" />
+            <SolidColorBrush x:Key="PreviewSurfaceBrush" Color="#F6F7F9" />
             <SolidColorBrush x:Key="PlayerSurfaceBrush" Color="#111827" />
             <SolidColorBrush x:Key="RecordRowBrush" Color="#FCFCFD" />
             <SolidColorBrush x:Key="OverlayBrush" Color="#BFFFFFFF" />
@@ -59,7 +59,7 @@
     </ResourceDictionary.ThemeDictionaries>
 
     <Style x:Key="SectionTitleTextBlockStyle" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontSize" Value="19" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{ThemeResource StrongTextBrush}" />
     </Style>
@@ -73,7 +73,17 @@
         <Setter Property="Background" Value="{ThemeResource CardBackgroundBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource CardBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="16" />
-        <Setter Property="Padding" Value="20" />
+        <Setter Property="CornerRadius" Value="22" />
+        <Setter Property="Padding" Value="22" />
+    </Style>
+
+    <Style x:Key="HeaderActionButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 </ResourceDictionary>

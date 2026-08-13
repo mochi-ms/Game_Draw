@@ -80,8 +80,12 @@ public sealed class RecordingLibraryService : IDisposable
         await _libraryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return (await ReadLibraryUnsafeAsync(cancellationToken).ConfigureAwait(false))
-                .Where(HasMedia)
+            var items = await ReadLibraryUnsafeAsync(cancellationToken).ConfigureAwait(false);
+            // Persist the repaired index so a malformed/older library file can
+            // never hide recordings whose AVI and thumbnail still exist.
+            await WriteLibraryUnsafeAsync(items, cancellationToken).ConfigureAwait(false);
+            return items
+                .Where(HasAnyMedia)
                 .OrderByDescending(item => item.CreatedAt)
                 .ToArray();
         }
@@ -176,28 +180,106 @@ public sealed class RecordingLibraryService : IDisposable
 
     private async Task<List<DrawingRecording>> ReadLibraryUnsafeAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(LibraryPath))
+        var recordings = new List<DrawingRecording>();
+        if (File.Exists(LibraryPath))
         {
-            return [];
+            try
+            {
+                await using var stream = new FileStream(
+                    LibraryPath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite,
+                    16 * 1024,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                var stored = await JsonSerializer.DeserializeAsync<List<DrawingRecording?>>(
+                    stream,
+                    _jsonOptions,
+                    cancellationToken).ConfigureAwait(false);
+                if (stored is not null)
+                {
+                    recordings.AddRange(stored.Where(IsValidMetadata).Select(item => item!));
+                }
+            }
+            catch (JsonException)
+            {
+                // Keep the media files intact. They are rediscovered below.
+            }
+            catch (IOException)
+            {
+                // A temporary index read failure must not make the page crash.
+            }
         }
 
-        try
+        RecoverUnindexedMedia(recordings);
+        return recordings;
+    }
+
+    private void RecoverUnindexedMedia(List<DrawingRecording> recordings)
+    {
+        var indexedVideoFiles = recordings
+            .Select(item => item.VideoFileName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var videoPath in Directory.EnumerateFiles(RootPath, "*.avi", SearchOption.TopDirectoryOnly))
         {
-            await using var stream = new FileStream(
-                LibraryPath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                16 * 1024,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            return await JsonSerializer.DeserializeAsync<List<DrawingRecording>>(
-                stream,
-                _jsonOptions,
-                cancellationToken).ConfigureAwait(false) ?? [];
+            var videoFileName = Path.GetFileName(videoPath);
+            if (indexedVideoFiles.Contains(videoFileName))
+            {
+                continue;
+            }
+
+            var id = Path.GetFileNameWithoutExtension(videoPath);
+            var thumbnailFileName = id + ".jpg";
+            if (!File.Exists(Path.Combine(RootPath, thumbnailFileName)))
+            {
+                continue;
+            }
+
+            var createdAt = new DateTimeOffset(File.GetCreationTime(videoPath));
+            recordings.Add(new DrawingRecording(
+                id,
+                $"복구된 그림 기록 · {createdAt:MM-dd HH-mm}",
+                videoFileName,
+                thumbnailFileName,
+                createdAt,
+                TimeSpan.Zero,
+                0,
+                0,
+                0,
+                false,
+                "복구된 기록",
+                string.Empty));
+            indexedVideoFiles.Add(videoFileName);
         }
-        catch (JsonException)
+
+        var indexedThumbnailFiles = recordings
+            .Select(item => item.ThumbnailFileName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var thumbnailPath in Directory.EnumerateFiles(RootPath, "*.jpg", SearchOption.TopDirectoryOnly))
         {
-            return [];
+            var thumbnailFileName = Path.GetFileName(thumbnailPath);
+            if (indexedThumbnailFiles.Contains(thumbnailFileName))
+            {
+                continue;
+            }
+
+            var id = Path.GetFileNameWithoutExtension(thumbnailPath);
+            var createdAt = new DateTimeOffset(File.GetCreationTime(thumbnailPath));
+            recordings.Add(new DrawingRecording(
+                id,
+                $"복구된 완성 썸네일 · {createdAt:MM-dd HH-mm}",
+                id + ".avi",
+                thumbnailFileName,
+                createdAt,
+                TimeSpan.Zero,
+                0,
+                0,
+                0,
+                false,
+                "썸네일 기록",
+                string.Empty));
+            indexedThumbnailFiles.Add(thumbnailFileName);
         }
     }
 
@@ -222,8 +304,16 @@ public sealed class RecordingLibraryService : IDisposable
         File.Move(temporaryPath, LibraryPath, true);
     }
 
-    private bool HasMedia(DrawingRecording recording)
-        => File.Exists(GetVideoPath(recording)) && File.Exists(GetThumbnailPath(recording));
+    private bool HasAnyMedia(DrawingRecording recording)
+        => File.Exists(GetVideoPath(recording)) || File.Exists(GetThumbnailPath(recording));
+
+    private static bool IsValidMetadata(DrawingRecording? recording)
+        => recording is not null
+            && !string.IsNullOrWhiteSpace(recording.Id)
+            && !string.IsNullOrWhiteSpace(recording.VideoFileName)
+            && !string.IsNullOrWhiteSpace(recording.ThumbnailFileName)
+            && string.Equals(Path.GetFileName(recording.VideoFileName), recording.VideoFileName, StringComparison.Ordinal)
+            && string.Equals(Path.GetFileName(recording.ThumbnailFileName), recording.ThumbnailFileName, StringComparison.Ordinal);
 
     private static string NormalizeName(string value)
     {

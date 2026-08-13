@@ -18,7 +18,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="GameDraw">
+        <TitleBar x:Name="AppTitleBar" Title="GameDraw" Subtitle="설치 빌드 확인 중">
             <TitleBar.IconSource>
                 <BitmapIconSource
                     ShowAsMonochrome="False"

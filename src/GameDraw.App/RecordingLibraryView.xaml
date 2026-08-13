@@ -26,6 +26,7 @@
             <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                 <TextBlock Text="영상 기록" FontSize="24" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" />
                 <TextBlock x:Name="LibrarySummary" Text="자동 그리기 과정과 완성 결과를 한곳에서 관리합니다." Style="{ThemeResource MutedTextBlockStyle}" />
+                <TextBlock x:Name="StoragePathText" FontSize="11" Foreground="{ThemeResource PrimaryBrush}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
             <Button Grid.Column="2" Click="OpenFolder_Click" Content="저장 폴더" Padding="14,8" />
             <Button Grid.Column="3" Click="Refresh_Click" Content="새로고침" Padding="14,8" />

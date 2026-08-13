@@ -327,6 +327,7 @@ public sealed class DrawingSessionController : IDisposable
         DrawingQualityPreset quality,
         double speedMultiplier,
         bool smartSubjectEnabled,
+        NormalizedRect? manualCrop = null,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
     {
@@ -359,13 +360,22 @@ public sealed class DrawingSessionController : IDisposable
         status?.Report("원본 이미지를 디코딩하는 중입니다…");
         var decoded = await _decoder.DecodeFileAsync(sourcePath, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+        var focusSource = manualCrop is { IsWithinUnitSquare: true, Width: > 0.001d, Height: > 0.001d }
+            ? CropFrame(decoded.Frame, manualCrop.Value)
+            : decoded.Frame;
         var subjectFocus = smartSubjectEnabled
             ? await Task.Run(() => SubjectFocusProcessor.Process(
-                decoded.Frame,
+                focusSource,
                 renderStyle is DrawingRenderStyle.SmartPaint or DrawingRenderStyle.GrayscalePhoto
-                    ? new SubjectFocusOptions { BackgroundTolerance = 38d, CropMarginRatio = 0.055d }
+                    ? new SubjectFocusOptions
+                    {
+                        BackgroundTolerance = 42d,
+                        LocalGradientTolerance = 18d,
+                        MaximumGradientExpansion = 1.75d,
+                        CropMarginRatio = 0.055d
+                    }
                     : null), cancellationToken).ConfigureAwait(false)
-            : SubjectFocusResult.Unchanged(decoded.Frame);
+            : SubjectFocusResult.Unchanged(focusSource);
         if (subjectFocus.BackgroundRemoved)
         {
             status?.Report(subjectFocus.PersonLikely
@@ -1178,6 +1188,26 @@ public sealed class DrawingSessionController : IDisposable
         }
 
         return new ImageFrame(canvasSize.Width, canvasSize.Height, pixels);
+    }
+
+    private static ImageFrame CropFrame(ImageFrame source, NormalizedRect crop)
+    {
+        var left = Math.Clamp((int)Math.Floor(crop.X * source.Width), 0, source.Width - 1);
+        var top = Math.Clamp((int)Math.Floor(crop.Y * source.Height), 0, source.Height - 1);
+        var right = Math.Clamp((int)Math.Ceiling((crop.X + crop.Width) * source.Width), left + 1, source.Width);
+        var bottom = Math.Clamp((int)Math.Ceiling((crop.Y + crop.Height) * source.Height), top + 1, source.Height);
+        var width = right - left;
+        var height = bottom - top;
+        var pixels = new RgbaPixel[checked(width * height)];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                pixels[(y * width) + x] = source[left + x, top + y];
+            }
+        }
+
+        return new ImageFrame(width, height, pixels);
     }
 
     public void TogglePause()

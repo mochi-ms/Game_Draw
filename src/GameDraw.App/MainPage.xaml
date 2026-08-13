@@ -26,8 +26,8 @@
     <Grid x:Name="PageRoot">
         <Grid
             x:Name="RootLayout"
-            MaxWidth="1680"
-            Padding="24,18,24,22"
+            MaxWidth="1760"
+            Padding="30,22,30,28"
             HorizontalAlignment="Stretch"
             RowSpacing="12">
             <Grid.RowDefinitions>
@@ -41,25 +41,17 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
-                    <Border Width="40" Height="40" CornerRadius="10" Background="{ThemeResource PlayerSurfaceBrush}">
-                        <Image Source="ms-appx:///Assets/Square44x44Logo.scale-200.png" Stretch="UniformToFill" />
-                    </Border>
-                    <StackPanel Spacing="1" VerticalAlignment="Center">
-                        <TextBlock
-                            Text="GameDraw"
-                            FontSize="27"
-                            FontWeight="SemiBold"
-                            Foreground="{ThemeResource StrongTextBrush}" />
-                        <TextBlock
-                            x:Name="HeaderSubtitle"
-                            Text="이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요."
-                            Style="{ThemeResource MutedTextBlockStyle}" />
-                        <TextBlock
-                            x:Name="BuildVersionText"
-                            FontSize="11"
-                            Foreground="{ThemeResource PrimaryBrush}" />
-                    </StackPanel>
+                <StackPanel Spacing="3" VerticalAlignment="Center">
+                    <TextBlock
+                        x:Name="HeaderTitle"
+                        Text="그리기"
+                        FontSize="34"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource StrongTextBrush}" />
+                    <TextBlock
+                        x:Name="HeaderSubtitle"
+                        Text="이미지를 준비하고 Podiums에 안전하게 그려 보세요."
+                        Style="{ThemeResource MutedTextBlockStyle}" />
                 </StackPanel>
                 <StackPanel
                     Grid.Column="1"
@@ -68,30 +60,35 @@
                     VerticalAlignment="Center">
                     <Button
                         x:Name="HelpButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Click="ShowHelp_Click"
                         Content="사용법"
                         Padding="14,8"
                         AutomationProperties.Name="사용법 보기" />
                     <Button
                         x:Name="FloatingButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Click="ToggleFloating_Click"
                         Content="{x:Bind ViewModel.FloatingLabel, Mode=OneWay}"
                         Padding="14,8"
                         AutomationProperties.Name="게임 위 플로팅 전환" />
                     <Button
                         x:Name="RecordingLibraryButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Click="ShowRecordingLibrary_Click"
                         Content="영상 기록"
                         Padding="14,8"
                         AutomationProperties.Name="자동 그리기 영상 기록 보기" />
                     <Button
                         x:Name="ResetButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Click="ResetWorkspace_Click"
                         Content="작업 초기화"
                         Padding="14,8"
                         AutomationProperties.Name="현재 작업 중지 및 초기화" />
                     <Button
                         x:Name="AdvancedSettingsButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Content="고급 설정"
                         Padding="14,8">
                         <Button.Flyout>
@@ -150,6 +147,7 @@
                     </Button>
                     <Button
                         x:Name="ThemeButton"
+                        Style="{ThemeResource HeaderActionButtonStyle}"
                         Command="{x:Bind ViewModel.ToggleThemeCommand}"
                         Content="☼"
                         Padding="12,8"
@@ -162,8 +160,8 @@
                 x:Name="StatusBanner"
                 Grid.Row="1"
                 Background="{ThemeResource PrimarySoftBrush}"
-                CornerRadius="14"
-                Padding="16,10">
+                CornerRadius="18"
+                Padding="18,12">
                 <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -199,7 +197,7 @@
                 x:Name="WorkspaceLayout"
                 Grid.Row="2"
                 MinHeight="0"
-                ColumnSpacing="12">
+                ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="230" />
                     <ColumnDefinition Width="*" />
@@ -326,7 +324,7 @@
                             Background="{ThemeResource PreviewSurfaceBrush}"
                             BorderBrush="{ThemeResource CardBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="14"
+                        CornerRadius="20"
                             Padding="16">
                             <Grid>
                                 <StackPanel
@@ -532,12 +530,30 @@
                                 </ComboBox>
                                 <NumberBox Grid.Row="1" Grid.Column="1" Header="최대 색상 (2~256)" Value="{x:Bind ViewModel.MaximumColors, Mode=TwoWay}" Minimum="2" Maximum="256" SpinButtonPlacementMode="Compact" />
                             </Grid>
-                            <ToggleSwitch
-                                Header="스마트 피사체"
-                                OffContent="원본 유지"
-                                OnContent="배경 제거 · 인물 우선"
-                                IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}"
-                                ToolTipService.ToolTip="로컬 분석으로 배경을 지우고 인물 구도에서는 얼굴 특징부터 그립니다." />
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleSwitch
+                                    Header="스마트 피사체"
+                                    OffContent="원본 유지"
+                                    OnContent="배경 제거 · 인물 우선"
+                                    IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}"
+                                    ToolTipService.ToolTip="로컬 분석으로 배경을 지우고 인물 구도에서는 얼굴 특징부터 그립니다." />
+                                <Button
+                                    Grid.Column="1"
+                                    Click="ManualCrop_Click"
+                                    Content="직접 자르기"
+                                    IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}"
+                                    VerticalAlignment="Bottom"
+                                    Padding="14,8" />
+                            </Grid>
+                            <TextBlock
+                                x:Name="CropStatusText"
+                                Text="직접 자르기를 사용하면 선택한 영역 안에서 배경을 다시 분석합니다."
+                                Style="{ThemeResource MutedTextBlockStyle}"
+                                TextWrapping="Wrap" />
                             <StackPanel x:Name="AnalysisDescriptionPanel" Spacing="2">
                                 <TextBlock
                                     Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}"
@@ -703,6 +719,7 @@
                                     OffContent="끔"
                                     OnContent="배경 제거 · 인물 우선"
                                     IsOn="{x:Bind ViewModel.SmartSubjectEnabled, Mode=TwoWay}" />
+                                <Button Click="ManualCrop_Click" Content="직접 자르기" IsEnabled="{x:Bind ViewModel.HasImage, Mode=OneWay}" HorizontalAlignment="Stretch" />
                                 <TextBlock Text="{x:Bind ViewModel.ModeDescription, Mode=OneWay}" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" Style="{ThemeResource MutedTextBlockStyle}" />
                             </StackPanel>
                             <Button Grid.Row="5" Click="PrepareDrawing_Click" Content="이미지 분석" IsEnabled="{x:Bind ViewModel.CanPrepare, Mode=OneWay}" HorizontalAlignment="Stretch" Padding="14,9" />

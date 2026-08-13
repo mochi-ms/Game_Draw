@@ -26,6 +26,8 @@ public sealed partial class RecordingLibraryView : UserControl, IDisposable
     {
         InitializeComponent();
         _library = App.RecordingLibrary;
+        StoragePathText.Text = _library.RootPath;
+        ToolTipService.SetToolTip(StoragePathText, _library.RootPath);
         PlayerElement.SetMediaPlayer(_player);
         Unloaded += (_, _) => Pause();
         ActualThemeChanged += async (_, _) => await RenderListAsync();
@@ -104,6 +106,8 @@ public sealed partial class RecordingLibraryView : UserControl, IDisposable
 
     private async Task<UIElement> CreateRecordingCardAsync(DrawingRecording recording)
     {
+        var hasVideo = File.Exists(_library.GetVideoPath(recording));
+        var hasThumbnail = File.Exists(_library.GetThumbnailPath(recording));
         var card = new Border
         {
             Padding = new Thickness(10),
@@ -121,6 +125,11 @@ public sealed partial class RecordingLibraryView : UserControl, IDisposable
         var thumbnail = new Image { Width = 112, Height = 72, Stretch = Stretch.Uniform };
         try
         {
+            if (!hasThumbnail)
+            {
+                throw new FileNotFoundException();
+            }
+
             var file = await StorageFile.GetFileFromPathAsync(_library.GetThumbnailPath(recording));
             using var stream = await file.OpenReadAsync();
             var bitmap = new BitmapImage { DecodePixelWidth = 224 };
@@ -155,7 +164,9 @@ public sealed partial class RecordingLibraryView : UserControl, IDisposable
         details.Children.Add(name);
         var metadata = new TextBlock
         {
-            Text = $"{recording.CreatedAt.LocalDateTime:MM.dd HH:mm} · {FormatDuration(recording.Duration)} · {recording.Width}×{recording.Height}",
+            Text = hasVideo
+                ? $"{recording.CreatedAt.LocalDateTime:MM.dd HH:mm} · {FormatDuration(recording.Duration)} · {recording.Width}×{recording.Height}"
+                : $"{recording.CreatedAt.LocalDateTime:MM.dd HH:mm} · 영상 없음 · 완성 썸네일 보존",
             FontSize = 12,
             Foreground = BrushResource("MutedTextBrush"),
             TextTrimming = TextTrimming.CharacterEllipsis
@@ -168,7 +179,10 @@ public sealed partial class RecordingLibraryView : UserControl, IDisposable
         actions.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var play = new Button
         {
-            Content = recording.Completed ? "재생" : "중지 기록 재생",
+            Content = hasVideo
+                ? recording.Completed ? "재생" : "중지 기록 재생"
+                : "영상 파일 없음",
+            IsEnabled = hasVideo,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(10, 5, 10, 5)
         };
