@@ -36,8 +36,14 @@ internal static class DrawingTimeEstimator
         var movementSeconds = totalTravel / options.MovementPixelsPerSecond;
         var strokeDelaySeconds = strokeCount *
             (options.InterStrokeDelayMilliseconds + options.PerStrokeSafetyDelayMilliseconds) / 1000d;
-        var colorDelaySeconds = colorChanges * options.ColorChangeDelayMilliseconds / 1000d;
-        var duration = TimeSpan.FromSeconds(Math.Max(0d, movementSeconds + strokeDelaySeconds + colorDelaySeconds));
+        var authoredMovementPoints = Math.Max(0, pointCount - strokeCount);
+        var pointDelaySeconds = authoredMovementPoints * options.PerPointSafetyDelayMilliseconds / 1000d;
+        var colorSelections = colorChanges +
+            (options.IncludeInitialColorSelection && plan.ColorGroups.Count > 0 ? 1 : 0);
+        var colorDelaySeconds = colorSelections * options.ColorChangeDelayMilliseconds / 1000d;
+        var duration = TimeSpan.FromSeconds(Math.Max(
+            0d,
+            movementSeconds + strokeDelaySeconds + pointDelaySeconds + colorDelaySeconds));
 
         return new PlanEstimate(
             strokeCount,

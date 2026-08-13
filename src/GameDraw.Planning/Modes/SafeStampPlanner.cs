@@ -29,6 +29,10 @@ internal static class SafeStampPlanner
         DrawingPlannerOptions options,
         IReadOnlyList<byte>? remappedIndices)
     {
+        remappedIndices ??= options.MaximumTinyColorRegionPixels > 0 &&
+            options.MaximumTinyColorRegionDistance > 0d
+                ? PaletteRegionSmoother.Smooth(image, options)
+                : null;
         var strokesByColor = new Dictionary<int, List<DrawingStroke>>();
         var paletteIndices = remappedIndices is null
             ? PlanningUtilities.GetPaletteIndices(image, options)

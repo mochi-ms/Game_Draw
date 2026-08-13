@@ -576,10 +576,41 @@ public sealed class DrawingSessionController : IDisposable
             InterStrokeDelayMilliseconds = speedMultiplier >= 8d
                 ? 0
                 : (int)Math.Round(CurrentProfile.Timing.InterStrokeDelayMilliseconds / speedMultiplier),
-            ColorChangeDelayMilliseconds = (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
+            // A verified Podiums HEX edit includes a focus boundary, true
+            // double click, clear/type/readback and Enter commit. The old
+            // 10~50 ms estimate ignored almost all of that work.
+            ColorChangeDelayMilliseconds = colorRendering
+                ? 900
+                : (int)Math.Round(CurrentProfile.Timing.ColorChangeDelayMilliseconds / speedMultiplier),
             PerStrokeSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill
-                ? speedMultiplier >= 8d ? 28 : speedMultiplier >= 5d ? 37 : 60
-                : speedMultiplier >= 8d ? 38 : 37,
+                ? speedMultiplier >= 8d ? 170 : speedMultiplier >= 5d ? 190 : 220
+                : speedMultiplier >= 8d ? 155 : 180,
+            PerPointSafetyDelayMilliseconds = mode is DrawingMode.SafeStamp or DrawingMode.HalftoneStamp or DrawingMode.Pixel or DrawingMode.SmartFill
+                ? speedMultiplier >= 8d ? 6d : 8d
+                : 2d,
+            IncludeInitialColorSelection = colorRendering,
+            // At maximum speed, merge only low-contrast palette islands that
+            // are smaller than the measured physical pen footprint. Dark eyes,
+            // line work and other high-contrast details fail the colour-distance
+            // gate and remain exact strokes.
+            MaximumTinyColorRegionPixels = renderStyle == DrawingRenderStyle.FullPalette && speedMultiplier >= 8d
+                ? quality switch
+                {
+                    DrawingQualityPreset.OriginalPriority => 3,
+                    DrawingQualityPreset.High => 4,
+                    DrawingQualityPreset.Balanced => 4,
+                    _ => 5
+                }
+                : 0,
+            MaximumTinyColorRegionDistance = renderStyle == DrawingRenderStyle.FullPalette && speedMultiplier >= 8d
+                ? quality switch
+                {
+                    DrawingQualityPreset.OriginalPriority => 44d,
+                    DrawingQualityPreset.High => 48d,
+                    DrawingQualityPreset.Balanced => 52d,
+                    _ => 60d
+                }
+                : 0d,
             StrokeSimplificationTolerancePixels = qualitySettings.SimplificationTolerance,
             MinimumStrokeLengthPixels = qualitySettings.MinimumStrokeLength,
             BrushDiameterPixels = planBrushDiameter,

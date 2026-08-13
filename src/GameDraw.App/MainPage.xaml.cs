@@ -1037,9 +1037,14 @@ public sealed partial class MainPage : Page, IDisposable
 
             var progress = new Progress<DrawingProgress>(item =>
             {
+                var liveMessage = item.EstimatedRemaining is { } remaining &&
+                    item.State == DrawingExecutionState.Running &&
+                    item.CompletedStrokes > 0
+                        ? $"{item.Message} · 실시간 남은 시간 약 {FormatRemainingTime(remaining)}"
+                        : item.Message;
                 ViewModel.SetProgress(item.ClampedFraction);
-                ViewModel.SetExecutionState(item.State, item.Message);
-                _executionWindow?.Update(item.Message, item.ClampedFraction);
+                ViewModel.SetExecutionState(item.State, liveMessage);
+                _executionWindow?.Update(liveMessage, item.ClampedFraction);
             });
             var status = new Progress<string>(message =>
             {
@@ -1512,6 +1517,13 @@ public sealed partial class MainPage : Page, IDisposable
         "빠르게" or "고속 점묘" => 8d,
         _ => 10d
     };
+
+    private static string FormatRemainingTime(TimeSpan duration)
+        => duration.TotalHours >= 1d
+            ? $"{(int)duration.TotalHours}시간 {duration.Minutes}분"
+            : duration.TotalMinutes >= 1d
+                ? $"{Math.Max(1, (int)Math.Ceiling(duration.TotalMinutes))}분"
+                : $"{Math.Max(1, (int)Math.Ceiling(duration.TotalSeconds))}초";
 
     private (string Label, double? Ratio) SelectedCanvasAspect()
         => ViewModel.SelectedCanvasAspect switch

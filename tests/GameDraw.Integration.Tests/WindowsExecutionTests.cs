@@ -173,7 +173,8 @@ public sealed class WindowsExecutionTests
                 boundary == "atomic-up-move" || boundary.StartsWith("reset-pointer-capture:", StringComparison.Ordinal),
                 $"Move at event {pair.index} was not preceded by a released boundary: {boundary}");
         });
-        Assert.True(input.Events.Count(item => item == "release-all-buttons") >= plan.Statistics.StrokeCount * 3);
+        Assert.Equal(plan.Statistics.StrokeCount - 1, input.PointerCaptureResetCalls);
+        Assert.True(input.Events.Count(item => item == "release-all-buttons") >= plan.Statistics.StrokeCount + 1);
         Assert.Equal(plan.Statistics.StrokeCount, input.Events.Count(item => item == "up"));
     }
 

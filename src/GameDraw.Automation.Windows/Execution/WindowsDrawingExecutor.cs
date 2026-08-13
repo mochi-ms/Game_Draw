@@ -384,33 +384,38 @@ public sealed class WindowsDrawingExecutor :
         // explicit button-up frame before moving; batching MouseUp and Move in
         // one SendInput call can still make the game draw a connector to the
         // new coordinate using its previous-frame pen state.
-        var startGuardMilliseconds = extendedTravelFence
-            ? Math.Max(42, options.StrokeStartSettleMilliseconds)
-            : options.StrokeStartSettleMilliseconds;
-        var startConfirmationCount = extendedTravelFence
-            ? Math.Max(2, options.StrokeStartReleaseConfirmationCount)
-            : options.StrokeStartReleaseConfirmationCount;
-        var startGuardIntervals = startConfirmationCount + 1;
-        var startGuardInterval = startGuardMilliseconds / startGuardIntervals;
-        var startGuardElapsed = 0;
-        await _input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
-        for (var confirmation = 0;
-             confirmation < startConfirmationCount;
-             confirmation++)
+        if (!extendedTravelFence)
         {
-            await DelayUnscaledAsync(startGuardInterval, cancellationToken).ConfigureAwait(false);
-            startGuardElapsed += startGuardInterval;
+            var startGuardMilliseconds = options.StrokeStartSettleMilliseconds;
+            var startConfirmationCount = options.StrokeStartReleaseConfirmationCount;
+            var startGuardIntervals = startConfirmationCount + 1;
+            var startGuardInterval = startGuardMilliseconds / startGuardIntervals;
+            var startGuardElapsed = 0;
             await _input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+            for (var confirmation = 0;
+                 confirmation < startConfirmationCount;
+                 confirmation++)
+            {
+                await DelayUnscaledAsync(startGuardInterval, cancellationToken).ConfigureAwait(false);
+                startGuardElapsed += startGuardInterval;
+                await _input.ReleaseAllButtonsAsync(cancellationToken).ConfigureAwait(false);
+            }
+            await DelayUnscaledAsync(
+                startGuardMilliseconds - startGuardElapsed,
+                cancellationToken).ConfigureAwait(false);
         }
-        await DelayUnscaledAsync(
-            startGuardMilliseconds - startGuardElapsed,
-            cancellationToken).ConfigureAwait(false);
         // Never perform a disconnected positioning move while Roblox may
         // still own a Lua-side drag capture. Far jumps receive a full native
         // cancel/focus boundary; every other jump uses an ordered up+move
         // batch after at least one released render frame.
         if (extendedTravelFence)
         {
+            // RepositionWithCaptureResetAsync already begins with button/key
+            // release and does not return until a verified focus boundary has
+            // moved the cursor and restored Roblox with every button up. The
+            // old extra 42 ms pre-guard duplicated that same safety work for
+            // every disconnected stroke and accounted for several minutes in
+            // photo plans.
             await _input.RepositionWithCaptureResetAsync(
                 _binding.Snapshot.Handle,
                 first,

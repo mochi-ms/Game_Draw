@@ -213,6 +213,25 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void TravelEstimatorAccountsForVerifiedColorSelectionAndSafetyFences()
+    {
+        var image = Quantize(new[] { RgbColor.Black, RgbColor.White }, 2, 1);
+        var result = new DrawingPlanner().Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.Pixel,
+            MovementPixelsPerSecond = 1_000_000_000d,
+            InterStrokeDelayMilliseconds = 0,
+            PerStrokeSafetyDelayMilliseconds = 200,
+            ColorChangeDelayMilliseconds = 500,
+            IncludeInitialColorSelection = true
+        });
+
+        Assert.Equal(2, result.Estimate.StrokeCount);
+        Assert.Equal(1, result.Estimate.ColorChanges);
+        Assert.InRange(result.Estimate.EstimatedDuration.TotalSeconds, 1.399d, 1.401d);
+    }
+
+    [Fact]
     public void PlanPreviewRendersTheExactStrokePathOnWhite()
     {
         var stroke = new DrawingStroke(new[]
@@ -766,6 +785,85 @@ public sealed class ModePlannerTests
         Assert.Equal(red, preview[2, 2].Color);
         Assert.Equal(blue, preview[6, 6].Color);
         Assert.Equal(blue, preview[7, 6].Color);
+    }
+
+    [Fact]
+    public void SafeStampCleanupMergesOnlyTinyLowContrastIslands()
+    {
+        const int width = 8;
+        const int height = 8;
+        var background = new RgbColor(210, 195, 180);
+        var nearbyShade = new RgbColor(220, 205, 190);
+        var darkDetail = new RgbColor(20, 18, 16);
+        var saturatedDetail = new RgbColor(230, 70, 90);
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(background), width * height).ToArray();
+        pixels[(2 * width) + 2] = RgbaPixel.Opaque(nearbyShade);
+        pixels[(5 * width) + 5] = RgbaPixel.Opaque(darkDetail);
+        pixels[(1 * width) + 6] = RgbaPixel.Opaque(saturatedDetail);
+        var image = new PaletteQuantizer().Quantize(
+            new ImageFrame(width, height, pixels),
+            new ColorPalette(new[] { background, nearbyShade, darkDetail, saturatedDetail }),
+            new QuantizationOptions { PreserveAlpha = true });
+
+        var result = new DrawingPlanner().Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.SafeStamp,
+            BrushDiameterPixels = 1,
+            MaximumTinyColorRegionPixels = 1,
+            MaximumTinyColorRegionDistance = 30d,
+            OrderStrokesByTravel = false
+        });
+        var preview = DrawingPlanPostProcessor.RenderPreview(result.Plan, 1);
+
+        Assert.Equal(background, preview[2, 2].Color);
+        Assert.Equal(darkDetail, preview[5, 5].Color);
+        Assert.Equal(saturatedDetail, preview[6, 1].Color);
+        Assert.DoesNotContain(result.Plan.ColorGroups, group => group.Color == nearbyShade);
+        Assert.Contains(result.Plan.ColorGroups, group => group.Color == darkDetail);
+    }
+
+    [Fact]
+    public void SafeStampCleanupAtLeastHalvesPhotoLikeLowContrastFragmentation()
+    {
+        const int width = 42;
+        const int height = 42;
+        var baseColor = new RgbColor(182, 164, 148);
+        var shadeA = new RgbColor(194, 176, 160);
+        var shadeB = new RgbColor(170, 152, 138);
+        var darkDetail = new RgbColor(22, 20, 18);
+        var pixels = Enumerable.Repeat(RgbaPixel.Opaque(baseColor), width * height).ToArray();
+        for (var y = 2; y < height - 2; y += 3)
+        {
+            for (var x = 2; x < width - 2; x += 3)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(((x + y) & 1) == 0 ? shadeA : shadeB);
+            }
+        }
+
+        pixels[(10 * width) + 10] = RgbaPixel.Opaque(darkDetail);
+        pixels[(30 * width) + 30] = RgbaPixel.Opaque(darkDetail);
+        var image = new PaletteQuantizer().Quantize(
+            new ImageFrame(width, height, pixels),
+            new ColorPalette(new[] { baseColor, shadeA, shadeB, darkDetail }),
+            new QuantizationOptions { PreserveAlpha = true });
+        var planner = new DrawingPlanner();
+        var baseline = planner.Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.SafeStamp,
+            BrushDiameterPixels = 1
+        });
+        var optimized = planner.Plan(image, new DrawingPlannerOptions
+        {
+            Mode = DrawingMode.SafeStamp,
+            BrushDiameterPixels = 1,
+            MaximumTinyColorRegionPixels = 1,
+            MaximumTinyColorRegionDistance = 30d
+        });
+
+        Assert.True(
+            optimized.Estimate.StrokeCount * 2 <= baseline.Estimate.StrokeCount,
+            $"Expected at least 2x fewer strokes, baseline={baseline.Estimate.StrokeCount}, optimized={optimized.Estimate.StrokeCount}.");
+        Assert.Contains(optimized.Plan.ColorGroups, group => group.Color == darkDetail);
     }
 
     private static DrawingPlanningResult PlanTransparent(
