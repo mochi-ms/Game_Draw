@@ -41,20 +41,25 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center" Spacing="1">
-                    <TextBlock
-                        Text="GameDraw"
-                        FontSize="27"
-                        FontWeight="SemiBold"
-                        Foreground="{ThemeResource StrongTextBrush}" />
-                    <TextBlock
-                        x:Name="HeaderSubtitle"
-                        Text="이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요."
-                        Style="{ThemeResource MutedTextBlockStyle}" />
-                    <TextBlock
-                        x:Name="BuildVersionText"
-                        FontSize="11"
-                        Foreground="{ThemeResource PrimaryBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+                    <Border Width="40" Height="40" CornerRadius="10" Background="{ThemeResource PlayerSurfaceBrush}">
+                        <Image Source="ms-appx:///Assets/Square44x44Logo.scale-200.png" Stretch="UniformToFill" />
+                    </Border>
+                    <StackPanel Spacing="1" VerticalAlignment="Center">
+                        <TextBlock
+                            Text="GameDraw"
+                            FontSize="27"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource StrongTextBrush}" />
+                        <TextBlock
+                            x:Name="HeaderSubtitle"
+                            Text="이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요."
+                            Style="{ThemeResource MutedTextBlockStyle}" />
+                        <TextBlock
+                            x:Name="BuildVersionText"
+                            FontSize="11"
+                            Foreground="{ThemeResource PrimaryBrush}" />
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel
                     Grid.Column="1"
@@ -73,6 +78,12 @@
                         Content="{x:Bind ViewModel.FloatingLabel, Mode=OneWay}"
                         Padding="14,8"
                         AutomationProperties.Name="게임 위 플로팅 전환" />
+                    <Button
+                        x:Name="RecordingLibraryButton"
+                        Click="ShowRecordingLibrary_Click"
+                        Content="영상 기록"
+                        Padding="14,8"
+                        AutomationProperties.Name="자동 그리기 영상 기록 보기" />
                     <Button
                         x:Name="ResetButton"
                         Click="ResetWorkspace_Click"
@@ -148,6 +159,7 @@
             </Grid>
 
             <Border
+                x:Name="StatusBanner"
                 Grid.Row="1"
                 Background="{ThemeResource PrimarySoftBrush}"
                 CornerRadius="14"
@@ -591,6 +603,12 @@
                 </Grid>
                 </ScrollViewer>
             </Grid>
+
+            <local:RecordingLibraryView
+                x:Name="RecordingLibraryPage"
+                Grid.Row="2"
+                MinHeight="0"
+                Visibility="Collapsed" />
         </Grid>
 
         <Grid
@@ -606,24 +624,34 @@
 
             <Grid ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="GameDraw" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                <Button Grid.Column="1" Click="ShowHelp_Click" Content="?" Padding="10,7" AutomationProperties.Name="사용법 보기" />
-                <Button Grid.Column="2" Click="ResetWorkspace_Click" Content="초기화" Padding="10,7" />
-                <Button Grid.Column="3" Click="ToggleFloating_Click" Content="크게" Padding="10,7" />
+                <Border Width="30" Height="30" CornerRadius="8" Background="{ThemeResource PlayerSurfaceBrush}" VerticalAlignment="Center">
+                    <Image Source="ms-appx:///Assets/Square44x44Logo.scale-200.png" Stretch="UniformToFill" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="GameDraw" FontSize="20" FontWeight="SemiBold" Foreground="{ThemeResource StrongTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="2" Click="ShowHelp_Click" Content="?" Padding="10,7" AutomationProperties.Name="사용법 보기" />
+                <Button Grid.Column="3" Click="ResetWorkspace_Click" Content="초기화" Padding="10,7" />
+                <Button Grid.Column="4" Click="ToggleFloating_Click" Content="크게" Padding="10,7" />
             </Grid>
 
             <Border Grid.Row="1" Background="{ThemeResource PrimarySoftBrush}" CornerRadius="12" Padding="12,8">
                 <Grid ColumnSpacing="8">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock
                         Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                         TextTrimming="CharacterEllipsis"
                         ToolTipService.ToolTip="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Text="{x:Bind ViewModel.ProgressLabel, Mode=OneWay}"
+                        Foreground="{ThemeResource PrimaryBrush}"
                         FontWeight="SemiBold"
                         VerticalAlignment="Center" />
                 </Grid>

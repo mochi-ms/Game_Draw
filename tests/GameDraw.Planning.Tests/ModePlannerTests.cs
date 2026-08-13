@@ -528,6 +528,38 @@ public sealed class ModePlannerTests
     }
 
     [Fact]
+    public void SafeStampLocalJoiningDoesNotBridgeANarrowBlankGap()
+    {
+        const int width = 20;
+        const int height = 12;
+        var pixels = Enumerable.Repeat(RgbaPixel.Transparent, width * height).ToArray();
+        for (var y = 2; y <= 9; y++)
+        {
+            for (var x = 2; x <= 6; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+
+            for (var x = 10; x <= 14; x++)
+            {
+                pixels[(y * width) + x] = RgbaPixel.Opaque(RgbColor.Black);
+            }
+        }
+
+        var result = PlanTransparent(pixels, width, height, DrawingMode.SafeStamp);
+        var preview = DrawingPlanPostProcessor.RenderPreview(result.Plan, 2);
+
+        Assert.DoesNotContain(
+            result.Plan.EnumerateStrokes(),
+            item => item.Stroke.Points.Min(point => point.X) < 0.4d &&
+                    item.Stroke.Points.Max(point => point.X) > 0.45d);
+        for (var y = 0; y < height; y++)
+        {
+            Assert.Equal(RgbColor.White, preview[8, y].Color);
+        }
+    }
+
+    [Fact]
     public void SafeStampTwoPixelBrushCoversEverySourceInkPixel()
     {
         const int width = 17;

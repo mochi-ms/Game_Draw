@@ -56,11 +56,13 @@ public sealed partial class MainPage : Page, IDisposable
     private bool _calibrationCaptureInProgress;
     private bool _hexCaptureOnly;
     private bool _resetRequested;
+    private bool _recordingPageVisible;
 
     public MainPage()
     {
         InitializeComponent();
         BuildVersionText.Text = $"설치 빌드 · {CurrentBuildVersion()}";
+        RecordingLibraryPage.BackRequested += RecordingLibraryPage_BackRequested;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
     }
 
@@ -137,6 +139,9 @@ public sealed partial class MainPage : Page, IDisposable
         }
         _executionWindow = null;
 
+        RecordingLibraryPage.BackRequested -= RecordingLibraryPage_BackRequested;
+        RecordingLibraryPage.Dispose();
+
         _disposed = true;
         GC.SuppressFinalize(this);
     }
@@ -195,6 +200,7 @@ public sealed partial class MainPage : Page, IDisposable
     private async void ShowHelp_Click(object sender, RoutedEventArgs e)
     {
         var content = new StackPanel { Spacing = 10, MaxWidth = 620 };
+        content.Children.Add(CreateHelpSection("자동 영상 기록", "F5로 그리기를 시작하면 지정한 캔버스 영역만 자동 녹화합니다. 100% 완료 직후의 캔버스가 썸네일로 저장되며, 상단의 영상 기록에서 재생·이름 변경·삭제 또는 저장 폴더 열기를 할 수 있습니다."));
         content.Children.Add(CreateHelpSection("빠른 시작", "① 이미지 선택 → ② 표현 방식·품질 선택 → ③ 이미지 분석 → ④ 캔버스 영역 드래그 → ⑤ F5로 시작합니다. F7은 일시정지, F8은 즉시 중지입니다."));
         content.Children.Add(CreateHelpSection("미리보기 기준", "분석 뒤 보이는 ‘실행 경로 미리보기’가 실제 마우스가 따라갈 선입니다. 원본 픽셀이 아니라 실행 스트로크를 직접 렌더링하므로 결과를 시작 전에 확인할 수 있습니다."));
         content.Children.Add(CreateHelpSection("AI 밑그림·안전 채색", "색상 사진 권장 모드입니다. 피사체의 실제 바깥 윤곽만 먼저 그린 다음, 원본 픽셀 컬러를 짧은 안전 점묘로 전부 덮습니다. 색 조각마다 검은 테두리를 남기거나 페인트 통을 쓰지 않으므로 최종 결과는 픽셀 컬러 미리보기에 가깝고 전체 번짐도 없습니다."));
@@ -385,6 +391,49 @@ public sealed partial class MainPage : Page, IDisposable
 
     private void ResetWorkspace_Click(object sender, RoutedEventArgs e)
         => RequestWorkspaceReset();
+
+    private async void ShowRecordingLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recordingPageVisible)
+        {
+            CloseRecordingLibraryPage();
+            return;
+        }
+
+        try
+        {
+            _recordingPageVisible = true;
+            WorkspaceLayout.Visibility = Visibility.Collapsed;
+            StatusBanner.Visibility = Visibility.Collapsed;
+            RecordingLibraryPage.Visibility = Visibility.Visible;
+            RecordingLibraryButton.Content = "그리기로 돌아가기";
+            HeaderSubtitle.Text = "자동 그리기 영상과 완성 썸네일을 재생하고 관리하세요.";
+            await RecordingLibraryPage.OpenAsync();
+        }
+        catch (Exception exception)
+        {
+            ViewModel.StatusMessage = $"영상 기록 라이브러리를 열지 못했습니다: {exception.Message}";
+        }
+    }
+
+    private void RecordingLibraryPage_BackRequested(object? sender, EventArgs e)
+        => CloseRecordingLibraryPage();
+
+    private void CloseRecordingLibraryPage()
+    {
+        if (!_recordingPageVisible)
+        {
+            return;
+        }
+
+        RecordingLibraryPage.Pause();
+        RecordingLibraryPage.Visibility = Visibility.Collapsed;
+        WorkspaceLayout.Visibility = Visibility.Visible;
+        StatusBanner.Visibility = Visibility.Visible;
+        _recordingPageVisible = false;
+        RecordingLibraryButton.Content = ActualWidth < 900d ? "기록" : "영상 기록";
+        HeaderSubtitle.Text = "이미지 선택부터 게임 자동 그리기까지 한 화면에서 진행하세요.";
+    }
 
     private void ExecutionWindow_ResetRequested(object? sender, EventArgs e)
         => RequestWorkspaceReset();
@@ -918,6 +967,9 @@ public sealed partial class MainPage : Page, IDisposable
 
         _executionCancellation?.Dispose();
         _executionCancellation = new CancellationTokenSource();
+        CanvasRecordingSession? recordingSession = null;
+        DrawingExecutionResult? executionResult = null;
+        string? recordingError = null;
         try
         {
             RegisterExecutionHotkeys();
@@ -942,6 +994,21 @@ public sealed partial class MainPage : Page, IDisposable
             ViewModel.Stage = WorkspaceStage.Ready;
             ViewModel.StatusMessage = "Roblox Podiums 창을 자동으로 활성화합니다. F8은 즉시 중지입니다.";
             App.Window.AppWindow.Hide();
+            try
+            {
+                recordingSession = await App.RecordingLibrary.StartRecordingAsync(
+                    protectedRegions[0],
+                    _preparedDrawing!.SourcePath,
+                    ViewModel.SelectedMode,
+                    _executionCancellation.Token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // Recording is an accessory feature and must never change the
+                // established drawing/HEX timing if capture is unavailable.
+                recordingError = exception.Message;
+            }
+
             var progress = new Progress<DrawingProgress>(item =>
             {
                 ViewModel.SetProgress(item.ClampedFraction);
@@ -953,18 +1020,18 @@ public sealed partial class MainPage : Page, IDisposable
                 ViewModel.StatusMessage = message;
                 _executionWindow?.Update(message, ViewModel.Progress);
             });
-            var result = await App.DrawingSession.ExecuteAsync(
+            executionResult = await App.DrawingSession.ExecuteAsync(
                 _preparedDrawing!,
                 _executionWindow.Handle,
                 progress,
                 status,
                 _executionCancellation.Token);
             ViewModel.SetExecutionState(
-                result.State,
-                result.ErrorMessage ?? (result.State == DrawingExecutionState.Completed
+                executionResult.State,
+                executionResult.ErrorMessage ?? (executionResult.State == DrawingExecutionState.Completed
                     ? "그리기가 완료되었습니다."
                     : "그리기가 중지되었습니다."));
-            if (result.State == DrawingExecutionState.Completed)
+            if (executionResult.State == DrawingExecutionState.Completed)
             {
                 ViewModel.SetProgress(1d);
             }
@@ -983,6 +1050,22 @@ public sealed partial class MainPage : Page, IDisposable
         }
         finally
         {
+            if (recordingSession is not null)
+            {
+                try
+                {
+                    await recordingSession.StopAsync(
+                        executionResult?.State == DrawingExecutionState.Completed,
+                        CancellationToken.None);
+                }
+                catch (Exception exception)
+                {
+                    recordingError = exception.Message;
+                }
+
+                await recordingSession.DisposeAsync();
+            }
+
             if (_executionWindow is { IsDisposed: false })
             {
                 _executionWindow.SetInputPassThrough(false);
@@ -993,6 +1076,10 @@ public sealed partial class MainPage : Page, IDisposable
             UnregisterExecutionHotkeys();
             _executionCancellation?.Dispose();
             _executionCancellation = null;
+            if (!string.IsNullOrWhiteSpace(recordingError))
+            {
+                ViewModel.StatusMessage += $" · 영상 저장 실패: {recordingError}";
+            }
             if (_resetRequested)
             {
                 CompleteWorkspaceReset();
@@ -1097,6 +1184,10 @@ public sealed partial class MainPage : Page, IDisposable
         ResetButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
         AdvancedSettingsButton.Content = compact ? "설정" : "고급 설정";
         AdvancedSettingsButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
+        RecordingLibraryButton.Content = _recordingPageVisible
+            ? compact ? "돌아가기" : "그리기로 돌아가기"
+            : compact ? "기록" : "영상 기록";
+        RecordingLibraryButton.Padding = compact ? new Thickness(10, 8, 10, 8) : new Thickness(14, 8, 14, 8);
     }
 
     private void ApplyTheme(AppThemeMode mode)
@@ -1390,8 +1481,8 @@ public sealed partial class MainPage : Page, IDisposable
     private double SelectedSpeedMultiplier() => ViewModel.SelectedSpeed switch
     {
         "안정" or "안전 확인" => 2d,
-        "빠르게" or "고속 점묘" => 5d,
-        _ => 8d
+        "빠르게" or "고속 점묘" => 8d,
+        _ => 10d
     };
 
     private (string Label, double? Ratio) SelectedCanvasAspect()

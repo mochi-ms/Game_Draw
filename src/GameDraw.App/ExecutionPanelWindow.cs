@@ -21,7 +21,7 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
     private readonly TextBlock _percentage;
     private readonly ProgressBar _progress;
     private const int PanelWidth = 460;
-    private const int PanelHeight = 218;
+    private const int PanelHeight = 246;
     private bool _disposed;
     private bool _inputPassThrough;
 
@@ -87,7 +87,9 @@ public sealed class ExecutionPanelWindow : Window, IDisposable
         _surface = new Border
         {
             Padding = new Thickness(18, 14, 18, 12),
-            CornerRadius = new CornerRadius(15),
+            // The HWND already has one DWM-rounded silhouette. Rounding the
+            // inner card as well created the visible double curve.
+            CornerRadius = new CornerRadius(0),
             RequestedTheme = ElementTheme.Dark,
             Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 22, 29, 43)),
             // DWM owns the single native outline. A second XAML outline here

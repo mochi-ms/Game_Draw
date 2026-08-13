@@ -13,7 +13,7 @@ namespace GameDraw.Planning.Modes;
 /// </summary>
 internal static class SafeStampPlanner
 {
-    private const int MaximumNeighbourDistance = 2;
+    private const int MaximumNeighbourDistance = 12;
 
     public static DrawingPlan Create(QuantizedImage image, DrawingPlannerOptions options)
         => Create(image, options, remappedIndices: null);
@@ -50,7 +50,12 @@ internal static class SafeStampPlanner
                 image.Width,
                 image.Height,
                 options.BrushDiameterPixels);
-            foreach (var chunk in BuildConnectedInkWalks(centres, mask, image.Width, image.Height))
+            foreach (var chunk in BuildConnectedInkWalks(
+                         centres,
+                         mask,
+                         image.Width,
+                         image.Height,
+                         Math.Clamp(options.BrushDiameterPixels * 3, 6, MaximumNeighbourDistance)))
             {
                 var points = chunk
                     .Select(point => PlanningUtilities.Center(point.X, point.Y, image.Width, image.Height))
@@ -223,9 +228,17 @@ internal static class SafeStampPlanner
         IReadOnlyList<PixelPoint> centres,
         bool[] mask,
         int width,
-        int height)
+        int height,
+        int maximumNeighbourDistance)
     {
         var remaining = centres.ToHashSet();
+        var neighbourOffsets = (
+            from deltaY in Enumerable.Range(-maximumNeighbourDistance, (maximumNeighbourDistance * 2) + 1)
+            from deltaX in Enumerable.Range(-maximumNeighbourDistance, (maximumNeighbourDistance * 2) + 1)
+            let distance = (deltaX * deltaX) + (deltaY * deltaY)
+            where distance > 0 && distance <= maximumNeighbourDistance * maximumNeighbourDistance
+            orderby Math.Abs(deltaY), distance, deltaX descending
+            select new PixelPoint(deltaX, deltaY)).ToArray();
         foreach (var start in centres)
         {
             if (!remaining.Remove(start))
@@ -276,23 +289,13 @@ internal static class SafeStampPlanner
             {
                 // Horizontal preference gives each component a printer-like
                 // local sweep while keeping every connecting segment on ink.
-                for (var deltaY = -MaximumNeighbourDistance; deltaY <= MaximumNeighbourDistance; deltaY++)
+                foreach (var offset in neighbourOffsets)
                 {
-                    for (var deltaX = -MaximumNeighbourDistance; deltaX <= MaximumNeighbourDistance; deltaX++)
+                    var candidate = new PixelPoint(point.X + offset.X, point.Y + offset.Y);
+                    if (remaining.Contains(candidate) &&
+                        ConnectorTouchesInk(point, candidate, mask, width, height))
                     {
-                        if (deltaX == 0 && deltaY == 0)
-                        {
-                            continue;
-                        }
-
-                        var distance = (deltaX * deltaX) + (deltaY * deltaY);
-                        var candidate = new PixelPoint(point.X + deltaX, point.Y + deltaY);
-                        if (distance <= MaximumNeighbourDistance * MaximumNeighbourDistance &&
-                            remaining.Contains(candidate) &&
-                            ConnectorTouchesInk(point, candidate, mask, width, height))
-                        {
-                            yield return candidate;
-                        }
+                        yield return candidate;
                     }
                 }
             }

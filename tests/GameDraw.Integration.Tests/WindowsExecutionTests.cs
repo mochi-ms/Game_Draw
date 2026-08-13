@@ -286,7 +286,7 @@ public sealed class WindowsExecutionTests
     }
 
     [Fact]
-    public async Task SafeStampModeUsesFastReleasedMoveForAViewportLocalJump()
+    public async Task SafeStampModeResetsCaptureBetweenNearbyDisconnectedStrokes()
     {
         var provider = new FakeGeometryProvider(CreateGeometry(0, 0, 201, 201, 96));
         var binding = new TargetWindowBinding(provider.Current, provider);
@@ -312,8 +312,10 @@ public sealed class WindowsExecutionTests
         });
 
         Assert.Equal(DrawingExecutionState.Completed, result.State);
-        Assert.Equal(0, input.PointerCaptureResetCalls);
-        Assert.Equal(2, input.AtomicPositioningCalls);
+        Assert.Equal(1, input.PointerCaptureResetCalls);
+        Assert.Equal(1, input.AtomicPositioningCalls);
+        Assert.True(input.ReleaseAllButtonCalls >= plan.Statistics.StrokeCount * 2);
+        Assert.Empty(input.PressedButtons);
     }
 
     [Fact]

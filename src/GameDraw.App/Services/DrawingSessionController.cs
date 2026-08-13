@@ -690,7 +690,7 @@ public sealed class DrawingSessionController : IDisposable
             // Roblox coalesces very dense mouse messages. Frame-paced input
             // preserves curves and prevents skipped pen-up events.
             MaxEventsPerSecond = safeStamp
-                ? prepared.SpeedMultiplier >= 8d ? 960d : prepared.SpeedMultiplier >= 5d ? 480d : 192d
+                ? prepared.SpeedMultiplier >= 8d ? 960d : prepared.SpeedMultiplier >= 5d ? 720d : 192d
                 : prepared.SpeedMultiplier >= 8d ? 480d : 192d
         });
         var executor = new WindowsDrawingExecutor(input, binding);
@@ -722,9 +722,9 @@ public sealed class DrawingSessionController : IDisposable
                         ? 0
                         : CurrentProfile.Timing.InterStrokeDelayMilliseconds,
                     ColorChangeDelayMilliseconds = CurrentProfile.Timing.ColorChangeDelayMilliseconds,
-                    // Local raster hops use the short guard; any move beyond
-                    // the local threshold is promoted by the executor to the
-                    // full 42ms capture/focus fence below.
+                    // Connected raster ink stays on one pen-down path. Every
+                    // remaining disconnected move is promoted by the executor
+                    // to the full capture/focus fence.
                     StrokeStartSettleMilliseconds = safeStamp
                         ? prepared.SpeedMultiplier >= 8d ? 2 : prepared.SpeedMultiplier >= 5d ? 7 : 14
                         : 10,

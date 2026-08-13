@@ -31,6 +31,8 @@ public partial class App : Application
 
     public static DrawingSessionController DrawingSession { get; private set; } = null!;
 
+    public static RecordingLibraryService RecordingLibrary { get; private set; } = null!;
+
     /// <summary>
     /// The native window handle (HWND). Use for file pickers,
     /// <c>DataTransferManager</c>, and any WinRT interop that requires
@@ -55,8 +57,13 @@ public partial class App : Application
     {
         Window = new MainWindow();
         DrawingSession = new DrawingSessionController();
+        RecordingLibrary = new RecordingLibraryService();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        Window.Closed += (_, _) => DrawingSession.Dispose();
+        Window.Closed += (_, _) =>
+        {
+            DrawingSession.Dispose();
+            RecordingLibrary.Dispose();
+        };
         Window.Activate();
     }
 }

@@ -20,7 +20,9 @@
 
         <TitleBar x:Name="AppTitleBar" Title="GameDraw">
             <TitleBar.IconSource>
-                <FontIconSource Glyph="&#xE8B9;" />
+                <BitmapIconSource
+                    ShowAsMonochrome="False"
+                    UriSource="ms-appx:///Assets/Square44x44Logo.scale-200.png" />
             </TitleBar.IconSource>
         </TitleBar>
 

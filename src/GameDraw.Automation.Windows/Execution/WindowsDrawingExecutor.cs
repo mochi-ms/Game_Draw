@@ -255,7 +255,7 @@ public sealed class WindowsDrawingExecutor :
                     }
                     var stroke = group.Strokes[strokeIndex];
                     var extendedTravelFence = firstStrokeAfterColorControl ||
-                        RequiresExtendedTravelFence(previousStrokeEnd, stroke.Points[0], plan.Mode);
+                        RequiresExtendedTravelFence(previousStrokeEnd, stroke.Points[0]);
                     await DrawStrokeAsync(
                         stroke,
                         plan.LogicalSize,
@@ -617,8 +617,7 @@ public sealed class WindowsDrawingExecutor :
 
     private bool RequiresExtendedTravelFence(
         NormalizedPoint? previousStrokeEnd,
-        NormalizedPoint nextStrokeStart,
-        DrawingMode mode)
+        NormalizedPoint nextStrokeStart)
     {
         if (previousStrokeEnd is not { } previous)
         {
@@ -629,21 +628,12 @@ public sealed class WindowsDrawingExecutor :
         var to = _binding.Map(nextStrokeStart);
         var deltaX = to.X - from.X;
         var deltaY = to.Y - from.Y;
-        var distanceSquared = (deltaX * deltaX) + (deltaY * deltaY);
-        // Vector/artist strokes are intentionally disconnected. Give every
-        // visible reposition a genuine focus/capture boundary so a missed
-        // Roblox InputEnded can never connect two preview strokes. Raster
-        // printer modes contain many brush-local fragments; they retain the
-        // fast path only inside a tiny 12px neighbourhood.
-        var rasterPrinterMode = mode is
-            DrawingMode.SafeStamp or
-            DrawingMode.HalftoneStamp or
-            DrawingMode.Pixel or
-            DrawingMode.SmartFill or
-            DrawingMode.HorizontalScanline or
-            DrawingMode.VerticalScanline;
-        var threshold = rasterPrinterMode ? 12 : 2;
-        return distanceSquared >= threshold * threshold;
+        // Every visible disconnected move receives a genuine focus/capture
+        // boundary. Podiums can retain its Lua drag latch after several valid
+        // MouseUp deliveries, so treating a short raster hop as safe can still
+        // draw a connector. Performance comes from joining only paths that
+        // stay on planned ink, never from weakening this boundary.
+        return deltaX != 0 || deltaY != 0;
     }
 
     private static async ValueTask DelayForMovementAsync(
